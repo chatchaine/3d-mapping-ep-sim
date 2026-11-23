@@ -1,0 +1,10 @@
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+.vscode/
+.idea/
+node_modules/
+tests/out/
+*.png
+!docs/*.png

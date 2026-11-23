@@ -1,0 +1,45 @@
+<!doctype html><html><body><script type="module">
+// Engine-level scripted test: ?cfg=<json>&script=<json array of [action, args]>
+import { Sim } from '../js/engine/sim.js';
+import { autoPlace } from '../js/engine/catheters.js';
+import * as EP from '../js/engine/endpoints.js';
+import { CASES } from '../js/cases/cases.js';
+import { resolveTarget } from '../js/engine/targets.js';
+const q = new URLSearchParams(location.search);
+const cfg = JSON.parse(q.get('cfg') || '{}');
+const script = JSON.parse(q.get('script') || '[]');
+const out = { steps: [] };
+try {
+  const cd = q.get('case') ? CASES.find(c => c.id === q.get('case')) : null;
+  const sim = new Sim(cd || { engine: cfg });
+  window.sim = sim;
+  const st = () => ({ t: Math.round(sim.t), r: sim.status.rhythm, a: Math.round(sim.status.aCL), v: Math.round(sim.status.vCL) });
+  sim.on((type, d) => { if (type === 'measure') out.steps.push(['measure', JSON.stringify(d).slice(0, 300)]); });
+  for (const [act, arg] of script) {
+    if (act === 'place') { autoPlace(sim.catheters); sim.syncChannels(); }
+    else if (act === 'wait') sim.advance(arg);
+    else if (act === 'pace') { sim.stim.start(arg); sim.advance(arg.waitAfter ?? 0); }
+    else if (act === 'paceFor') { sim.stim.start(arg); sim.advance(arg.ms); sim.stim.stop(); }
+    else if (act === 'iso') sim.setIso(arg);
+    else if (act === 'beat') out.steps.push(['beat', JSON.stringify(sim.measureBeat())]);
+    else if (act === 'abl') { sim.catheters.ABL.setChamber(arg.chamber); const p = arg.target ? arg.target : null; const n = arg.sysTarget ? sim.sys.targets[arg.sysTarget] ?? sim.sys.nodes[arg.sysTarget] : -1; const pos = p || [sim.engine.pos[3*n], sim.engine.pos[3*n+1], sim.engine.pos[3*n+2]]; sim.catheters.ABL.moveTo(pos, arg.cf || 15); sim.updateABL(); sim.ablation.power = arg.power || 35; const ok = sim.ablation.start(); sim.advance((arg.secs || 30) * 1000); sim.ablation.stop(); out.steps.push(['abl', ok, sim.ablation.lesions.at(-1)?.depth?.toFixed(1), sim.catheters.ABL.cf.toFixed(1)]); }
+    else if (act === 'ablTarget') {
+      const tg = resolveTarget(sim, cd); const abl = sim.catheters.ABL; abl.setChamber(tg.chamber);
+      const sites = tg.kind === 'point' ? [tg.pos] : tg.sites; let n = 0, okc = 0; const t0 = performance.now();
+      sim.ablation.power = arg.power || cd.rfPower || 35;
+      for (const s of sites) { abl.moveTo(s, arg.cf || 15); sim.updateABL(); const ok = sim.ablation.start(); if (ok) okc++; else out.steps.push(['rfblocked', sim.ablation.blockReason]); for (let k = 0; k < (arg.secs || 15) * 10; k++) { sim.advance(100); sim.updateABL(); if (!sim.ablation.on) break; } sim.ablation.stop(); n++; sim.advance(arg.gap || 500); }
+      out.steps.push(['ablTarget', tg.kind, n, okc, Math.round(performance.now() - t0) + 'ms']);
+    }
+    else if (act === 'map') { const ch = sim.heart.chambers[{RA:0,LA:1,RV:2,LV:3}[arg.chamber]]; let k=0; for (let i=0;i<(arg.n||60);i++){ const nn = ch.offset + Math.floor(sim.rng()*ch.count); sim.advance(arg.dt||150); const p = sim.mapping.acquireAt(nn, [sim.engine.pos[3*nn],sim.engine.pos[3*nn+1],sim.engine.pos[3*nn+2]], 12); if (p.lat!=null) k++; } const sm=sim.mapping.summary(); out.steps.push(['map', k, sm.span, sm.earliest && sm.earliest.lat]); }
+    else if (act === 'csseq') { const L=['CS910','CS78','CS56','CS34','CS12'].map(id=>sim.egm.lastLocal(id,'A')); const m=Math.min(...L); out.steps.push(['cs', L.map(x=>Math.round(x-m)).join(',')]); }
+    else if (act === 'ep') { EP[arg](sim, (r) => out.steps.push(['epres', r.text || JSON.stringify(r)])); sim.advance(9000); }
+    else if (act === 'hrpvc') { sim.stim.hisRefractoryPVC(); sim.advance(2500); }
+    else if (act === 'parahis') { sim.stim.paraHisian(); sim.advance(6000); }
+    else if (act === 'shock') { out.steps.push(['shock', JSON.stringify(sim.shock(200, false))]); sim.advance(2000); }
+    else if (act === 'eval') { out.steps.push(['eval', String(eval(arg))]); }
+    out.steps.push([act, JSON.stringify(st())]);
+  }
+  out.log = sim.log.filter(e => !['point','pace_start','pace_end'].includes(e.type)).slice(-14).map(e => e.type + '@' + Math.round(e.t));
+} catch (err) { out.error = err.stack; }
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>

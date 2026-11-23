@@ -1,0 +1,118 @@
+/* Design tokens: docs/03_ux_ui_design.md §1.2 and §7.2 (colorblind-safe palette). */
+:root {
+  /* Surfaces */
+  --c-bg-viewport:   #05080c;  /* 3D canvas + EGM canvas background */
+  --c-bg-app:        #0b1016;  /* page background */
+  --c-bg-panel:      #121922;  /* side/bottom panels */
+  --c-bg-panel-alt:  #18212c;  /* panel headers, nested groups */
+  --c-bg-raised:     #1f2a37;  /* cards, inputs, buttons (rest) */
+  --c-bg-hover:      #273445;
+  --c-bg-pressed:    #2e3d51;
+  --c-border:        #2a3646;
+  --c-border-strong: #3b4a5e;
+  --c-overlay:       rgba(3, 6, 10, 0.72); /* modal scrim */
+
+  /* Text */
+  --c-text:          #e6edf3;  /* primary   (15.8:1 on panel) */
+  --c-text-muted:    #9aa8b8;  /* secondary (7.4:1 on panel)  */
+  --c-text-faint:    #6b7a8c;  /* disabled / tertiary (4.1:1, large text only) */
+  --c-text-inverse:  #05080c;
+
+  /* Accent (interactive) */
+  --c-accent:        #2ec4c9;  /* teal-cyan: focus, selected, primary buttons */
+  --c-accent-hover:  #4fd6da;
+  --c-accent-dim:    #1a5f63;
+  --c-focus-ring:    #7fe9ec;
+
+  /* Semantic */
+  --c-ok:            #3ccf7a;
+  --c-info:          #5aa9ff;
+  --c-warn:          #f2b33d;
+  --c-danger:        #ff5a5f;
+  --c-danger-bg:     #3a1416;
+  --c-warn-bg:       #3a2c10;
+  --c-ok-bg:         #0f3020;
+  --c-info-bg:       #10243d;
+
+  /* RF / generator */
+  --c-rf-on:         #ff7a1a;  /* RF energy delivery active */
+  --c-rf-ready:      #3ccf7a;
+  --c-pace:          #c58cff;  /* pacing active indicator */
+
+  /* EGM channel colors (on --c-bg-viewport) */
+  --c-egm-surface:   #e6edf3;  /* I, II, V1 */
+  --c-egm-hra:       #ffd166;
+  --c-egm-his:       #7bdff2;
+  --c-egm-cs:        #b8f28b;
+  --c-egm-rva:       #f7a1c4;
+  --c-egm-abl:       #ff9f5a;
+  --c-egm-grid-major:#1c2836;
+  --c-egm-grid-minor:#111a24;
+  --c-egm-caliper:   #2ec4c9;
+  --c-egm-annot:     #9aa8b8;
+
+  /* Catheter rendering in 3D */
+  --c-cath-abl:      #ff9f5a;
+  --c-cath-cs:       #b8f28b;
+  --c-cath-his:      #7bdff2;
+  --c-cath-hra:      #ffd166;
+  --c-cath-rva:      #f7a1c4;
+  --c-shell-nomap:   #8a96a3;  /* un-mapped shell grey */
+
+  /* LAT scale (default; 7 stops early→late) */
+  --lat-0: #e8262b; /* red    — earliest */
+  --lat-1: #f57c1f; /* orange */
+  --lat-2: #f7d02c; /* yellow */
+  --lat-3: #44c25a; /* green  */
+  --lat-4: #2bb3d9; /* cyan   */
+  --lat-5: #3a5fe0; /* blue   */
+  --lat-6: #8e3fd1; /* purple — latest */
+
+  /* Voltage scale (bipolar; low→high) */
+  --volt-scar:   #e8262b; /* < 0.5 mV  */
+  --volt-low-1:  #f7d02c;
+  --volt-low-2:  #44c25a;
+  --volt-low-3:  #2bb3d9;
+  --volt-normal: #8e3fd1; /* > 1.5 mV  */
+
+  /* Lesion tag colors (see §3.6) */
+  --tag-weak:    #f7d02c;
+  --tag-good:    #ff7a1a;
+  --tag-strong:  #e8262b;
+  --tag-excess:  #ffffff;
+  --tag-his:     #f2e600; /* His location marker */
+  --tag-phrenic: #3ccf7a; /* phrenic capture site */
+
+  /* Typography */
+  --font-ui:   system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-xs: 11px; --fs-sm: 12px; --fs-md: 13px; --fs-base: 14px;
+  --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 28px;
+  --fw-regular: 400; --fw-medium: 500; --fw-bold: 650;
+  --lh-tight: 1.2; --lh-base: 1.45;
+
+  /* Spacing (4 px base) */
+  --sp-0: 0; --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* Shape & depth */
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px; --radius-pill: 999px;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-2: 0 6px 24px rgba(0,0,0,.55);
+  --dur-fast: 120ms; --dur-base: 200ms; --ease: cubic-bezier(.2,.7,.2,1);
+
+  /* Layout */
+  --topbar-h: 48px; --left-w: 260px; --right-w: 300px; --bottom-h: 260px;
+}
+@media (prefers-reduced-motion: reduce) { :root { --dur-fast: 0ms; --dur-base: 0ms; } }
+
+:root { --z-viewport-ui: 10; --z-steer: 20; --z-popover: 30; --z-drawer: 40; --z-banner: 50; --z-toast: 60; --z-modal: 70; --z-coach: 80; }
+
+[data-palette="cb"] {
+  /* LAT: perceptually-uniform, CVD-safe (viridis-like reversed: early=bright yellow → late=dark purple) */
+  --lat-0:#fde725; --lat-1:#a0da39; --lat-2:#4ac16d; --lat-3:#1fa187;
+  --lat-4:#277f8e; --lat-5:#365c8d; --lat-6:#46327e;
+  --volt-scar:#fde725; --volt-low-1:#4ac16d; --volt-low-2:#1fa187; --volt-low-3:#365c8d; --volt-normal:#46327e;
+  --tag-weak:#f0e442; --tag-good:#e69f00; --tag-strong:#d55e00; --tag-excess:#ffffff;
+  --c-ok:#009e73; --c-danger:#d55e00; --c-warn:#e69f00;
+}

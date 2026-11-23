@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3D Mapping EP Sim</title>
+  <meta name="description" content="Interactive 3D electroanatomic mapping simulator for electrophysiology training (educational, not a medical device).">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2l8.7 5v10L12 22l-8.7-5V7z' fill='%2305080c' stroke='%232ec4c9' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='3' fill='%232ec4c9'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  } }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#viewport-canvas">Skip to 3D map</a>
+
+  <!-- ============================ HOME ============================ -->
+  <section id="screen-home" class="screen screen--home" aria-labelledby="home-title">
+    <header class="home__header">
+      <div class="brand">
+        <svg class="brand__logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.7 5v10L12 22l-8.7-5V7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div>
+          <h1 id="home-title" class="brand__name">3D Mapping EP Sim</h1>
+          <p class="brand__tag">3D electroanatomic mapping trainer</p>
+        </div>
+      </div>
+      <div class="home__actions">
+        <button class="btn btn--secondary" id="btn-sandbox">Sandbox</button>
+        <button class="btn btn--ghost" id="btn-help-home" aria-label="Help and shortcuts">Help</button>
+        <button class="btn btn--ghost" id="btn-settings-home">Settings</button>
+      </div>
+    </header>
+    <div class="filter-bar" role="toolbar" aria-label="Filter cases">
+      <div class="chips" id="filter-chips"></div>
+      <label class="search"><span class="sr-only">Search cases</span><input type="search" id="case-search" placeholder="Search cases…"></label>
+    </div>
+    <div class="case-grid" id="case-grid" role="list"></div>
+    <footer class="home__footer">
+      Educational simulator only: not a medical device, not for clinical decision-making, and not affiliated with any mapping-system vendor.
+      Models are simplified teaching approximations.
+    </footer>
+  </section>
+
+  <!-- ============================ APP ============================ -->
+  <div id="screen-app" class="app-shell screen" hidden data-mode="case">
+    <header class="top-bar" role="banner">
+      <button class="top-bar__logo" id="btn-home" aria-label="Return to case library">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.7 5v10L12 22l-8.7-5V7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>3D Mapping EP Sim</span>
+      </button>
+      <div class="top-bar__case" id="tb-case" title=""></div>
+      <ol class="step-progress" id="tb-steps" aria-label="Workflow progress"></ol>
+      <div class="chip chip--status" id="tb-rhythm" aria-live="polite">Sinus</div>
+      <div class="chip chip--pace" id="tb-pacing" hidden></div>
+      <div class="top-bar__timer" id="tb-timer" title="Simulated procedure time">00:00</div>
+      <div class="top-bar__rf" id="tb-rf" title="Total RF time">RF 0 s</div>
+      <div class="top-bar__score" id="tb-score" title="Provisional score">—</div>
+      <div class="top-bar__actions">
+        <button class="btn btn--icon" id="btn-help" aria-label="Help (F1)">?</button>
+        <button class="btn btn--icon" id="btn-settings" aria-label="Settings">≡</button>
+      </div>
+    </header>
+
+    <aside class="panel panel--left" aria-label="Workflow and catheters">
+      <section class="panel-section" id="sec-workflow">
+        <h2 class="panel-section__header">Workflow</h2>
+        <div class="panel-section__body">
+          <ol class="workflow" id="workflow-list"></ol>
+          <div class="step-actions" id="step-actions"></div>
+        </div>
+      </section>
+      <section class="panel-section" id="sec-cath">
+        <h2 class="panel-section__header">Catheters</h2>
+        <div class="panel-section__body" id="cath-list"></div>
+      </section>
+      <section class="panel-section" id="sec-maps">
+        <h2 class="panel-section__header">Map settings</h2>
+        <div class="panel-section__body" id="map-settings"></div>
+      </section>
+    </aside>
+
+    <main class="viewport" id="viewport" role="application" aria-label="3D cardiac map" aria-describedby="viewport-desc">
+      <canvas id="viewport-canvas" class="viewport__canvas" tabindex="0" aria-label="3D heart shell. Drag to orbit, wheel to zoom, Shift+click to acquire a point."></canvas>
+      <p id="viewport-desc" class="sr-only" aria-live="off"></p>
+      <div class="viewport__toolbar" role="toolbar" aria-label="Map display">
+        <label class="sr-only" for="map-type">Map type</label>
+        <select id="map-type" class="select">
+          <option value="lat">LAT map</option>
+          <option value="volt">Voltage map</option>
+          <option value="prop">Propagation (live)</option>
+          <option value="none">Anatomy only</option>
+        </select>
+        <button class="chip chip--toggle" id="tg-opacity" aria-pressed="false" title="Shell opacity (O)">Shell</button>
+        <button class="chip chip--toggle" id="tg-points" aria-pressed="true">Points</button>
+        <button class="chip chip--toggle" id="tg-tags" aria-pressed="true">Tags</button>
+        <button class="chip chip--toggle" id="tg-cath" aria-pressed="true">Catheters</button>
+        <button class="chip chip--toggle" id="tg-labels" aria-pressed="true">Labels</button>
+        <button class="chip chip--toggle" id="tg-others" aria-pressed="false" title="Show the other chambers">All chambers</button>
+      </div>
+      <div class="view-presets" role="group" aria-label="View presets">
+        <button class="view-presets__btn" data-view="AP">AP</button><button class="view-presets__btn" data-view="PA">PA</button>
+        <button class="view-presets__btn" data-view="LAO">LAO</button><button class="view-presets__btn" data-view="RAO">RAO</button>
+        <button class="view-presets__btn" data-view="LL">LL</button><button class="view-presets__btn" data-view="RL">RL</button>
+      </div>
+      <div class="alert-stack" id="alert-stack" role="alert" aria-live="assertive"></div>
+      <div class="viewport__actions">
+        <button class="btn btn--primary" id="btn-acquire" title="Acquire point (Space)">⊕ Acquire pt</button>
+        <button class="btn" id="btn-undo-pt" title="Delete last point (Backspace)">Undo pt</button>
+        <button class="btn" id="btn-tag" title="Tag His at catheter tip (T)">Tag His</button>
+      </div>
+      <div class="colorbar" id="colorbar" data-map="lat">
+        <div class="colorbar__title" id="cb-title">LAT (ms)</div>
+        <div class="colorbar__gradient" id="cb-grad"></div>
+        <div class="colorbar__labels"><span id="cb-lo">-80 Early</span><span id="cb-hi">+40 Late</span></div>
+      </div>
+      <div class="viewport__status" id="vp-status"></div>
+      <div class="steer-pad" id="steer-pad" aria-label="Ablation catheter steering">
+        <div class="steer-pad__title">STEER (ABL) <span class="steer-pad__led" id="steer-led" data-contact="none" aria-hidden="true"></span><span id="steer-cf" class="mono">0 g</span></div>
+        <div class="steer-pad__grid">
+          <button class="btn btn--icon" data-steer="defl+" aria-label="Deflect more (W)">▲</button>
+          <button class="btn btn--icon" data-steer="rot-" aria-label="Rotate counter-clockwise (Q)">⟲</button>
+          <button class="btn btn--icon" data-steer="rot+" aria-label="Rotate clockwise (E)">⟳</button>
+          <button class="btn btn--icon" data-steer="defl-" aria-label="Deflect less (S)">▼</button>
+          <button class="btn btn--icon" data-steer="adv+" aria-label="Advance (R)">⇡</button>
+          <button class="btn btn--icon" data-steer="adv-" aria-label="Retract (F)">⇣</button>
+        </div>
+        <div class="steer-pad__read mono" id="steer-read">defl 0% · rot 0° · adv 0 mm</div>
+        <label class="steer-pad__ch">Chamber <select id="abl-chamber" class="select"><option>RA</option><option>LA</option><option>RV</option><option>LV</option></select></label>
+      </div>
+    </main>
+
+    <section class="egm" aria-label="Intracardiac electrograms" role="region">
+      <div class="egm__toolbar" role="toolbar" aria-label="EGM controls">
+        <div class="segmented" role="radiogroup" aria-label="Sweep speed" id="sweep-seg">
+          <button role="radio" class="segmented__option" data-speed="25" aria-checked="false">25</button>
+          <button role="radio" class="segmented__option" data-speed="50" aria-checked="false">50</button>
+          <button role="radio" class="segmented__option" data-speed="100" aria-checked="true">100</button>
+          <button role="radio" class="segmented__option" data-speed="200" aria-checked="false">200</button>
+        </div>
+        <span class="egm__unit">mm/s</span>
+        <button class="chip chip--toggle" id="egm-gain-dn" aria-label="Decrease gain">Gain −</button>
+        <button class="chip chip--toggle" id="egm-gain-up" aria-label="Increase gain">Gain +</button>
+        <button class="chip chip--toggle" id="egm-cal" aria-pressed="false" title="Calipers (C)">Calipers</button>
+        <button class="chip chip--toggle" id="egm-freeze" aria-pressed="false" title="Freeze (Shift+F)">Freeze</button>
+        <span class="egm__measure mono" id="egm-measure" aria-live="polite"></span>
+      </div>
+      <canvas class="egm__canvas" id="egm-canvas" aria-label="Scrolling electrogram traces; use Freeze and Calipers to measure intervals"></canvas>
+    </section>
+
+    <aside class="panel panel--right" aria-label="Stimulator and generator">
+      <section class="panel-section" id="sec-stim">
+        <h2 class="panel-section__header">Stimulator</h2>
+        <div class="panel-section__body" id="stim-body"></div>
+      </section>
+      <section class="panel-section" id="sec-drugs">
+        <h2 class="panel-section__header">Drugs &amp; patient</h2>
+        <div class="panel-section__body" id="drug-body"></div>
+      </section>
+      <section class="panel-section" id="sec-rf">
+        <h2 class="panel-section__header">RF generator</h2>
+        <div class="panel-section__body" id="rf-body"></div>
+      </section>
+      <section class="panel-section" id="sec-hint">
+        <div class="panel-section__body">
+          <button class="btn btn-hint" id="btn-hint" title="Hint (H)">💡 Hint</button>
+          <div class="hint-card" id="hint-card" hidden></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <!-- ============================ DEBRIEF ============================ -->
+  <section id="screen-debrief" class="screen screen--debrief" hidden aria-labelledby="debrief-title"></section>
+
+  <div id="modal-root"></div>
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="sr-status" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

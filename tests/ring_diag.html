@@ -1,0 +1,24 @@
+<!doctype html><html><body><script type="module">
+import { Sim } from '../js/engine/sim.js';
+const q = new URLSearchParams(location.search);
+const cfg = JSON.parse(q.get('cfg') || '{}');
+const out = {};
+try {
+  const sim = new Sim({ engine: cfg });
+  sim.sinus.setActive(false);
+  const E = sim.engine, ang = sim.sys.ringAngle.TV;
+  const c = sim.heart.chambers[0];
+  sim.advance(390);
+  const first = new Float64Array(E.nMesh).fill(NaN);
+  const second = new Float64Array(E.nMesh).fill(NaN);
+  sim.subscribers.push((n,t)=>{ if (n<E.nMesh) { if (isNaN(first[n])) first[n]=t; else if (isNaN(second[n])) second[n]=t; }});
+  sim.advance(1500);
+  // bin by angle (30 deg bins): min first time, min second time, count
+  const bins = [];
+  for (let b=0;b<12;b++) bins.push({f:Infinity,s:Infinity,n:0,na:0});
+  for (let n=c.offset;n<c.offset+c.count;n++){ const b=Math.floor(ang[n]/30)%12; bins[b].n++; if(!isNaN(first[n])) bins[b].f=Math.min(bins[b].f,first[n]); else bins[b].na++; if(!isNaN(second[n])) bins[b].s=Math.min(bins[b].s,second[n]); }
+  out.bins = bins.map((b,i)=>`${i*30}:${Math.round(b.f)}/${Math.round(b.s)} na${b.na}/${b.n}`);
+  out.blockNodes = sim.sys.regions.crista.length;
+} catch (err) { out.error = err.stack; }
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>

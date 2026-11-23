@@ -1,0 +1,31 @@
+<!doctype html><html><body><script type="module">
+import { Sim } from '../js/engine/sim.js';
+const q = new URLSearchParams(location.search);
+const out = {};
+try {
+  const t0 = performance.now();
+  const sim = new Sim({ engine: { sinusCL: 800, ah: 80, hv: 45 } });
+  out.build = Math.round(performance.now()-t0);
+  const t1 = performance.now();
+  sim.advance(5000);
+  out.run5s = Math.round(performance.now()-t1);
+  sim.advance(500);
+  out.beat = sim.measureBeat();
+  const L = sim.heart.landmarks, E = sim.engine, b0 = out.beat;
+  const at = (n) => Math.round(E.actInWindow(n, b0.tH-400, b0.tH+300) - b0.pOn);
+  out.lm = {}; for (const k of ['SINUS_NODE','HRA_CATH','FP_ENTRY','SP_ENTRY','CS_OS','LOW_LATERAL_RA','RAA','CTI_TA','FOSSA_OVALIS','LAA','LSPV','RIPV','LAT_MA','RV_APEX','LV_APEX','RVOT_SEPTAL']) out.lm[k]=at(L[k].node);
+  const br = sim.sys.atrialBridges; out.br = Object.fromEntries(Object.entries(br).map(([k,v])=>[k,at(v)]));
+  let chMax=[0,0,0,0]; let notAct=[0,0,0,0];
+  for (let n=0;n<E.nMesh;n++){ const a=E.actInWindow(n,b0.tH-400,b0.tH+300); const c=E.chamber[n]; if(isNaN(a)) notAct[c]++; else chMax[c]=Math.max(chMax[c],Math.round(a-b0.pOn)); }
+  out.chMax=chMax; out.notAct=notAct;
+  out.status = sim.status;
+  out.acts = sim.engine.actCount;
+  // CS sequence: LA nodes nearest to CS landmarks
+  const h = sim.heart, e = sim.engine;
+  const tH = out.beat.tH;
+  out.cs = ['CS_9_10','CS_7_8','CS_5_6','CS_3_4','CS_1_2'].map(k => Math.round(e.actInWindow(h.landmarks[k].node, tH-300, tH) - out.beat.pOn));
+  out.hra = Math.round(e.actInWindow(sim.refNodes.atrialHRA, tH-300, tH) - out.beat.pOn);
+  out.septalLinks = sim.sys.septalLinks; out.pmj = [sim.sys.pmj.LV.length, sim.sys.pmj.RV.length];
+} catch (err) { out.error = err.stack; }
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>

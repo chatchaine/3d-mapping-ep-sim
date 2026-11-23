@@ -1,0 +1,17 @@
+<!doctype html><html><head><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script></head>
+<body style="margin:0;background:#000"><script type="module">
+import * as THREE from 'three';
+import { buildHeart } from '../js/engine/geometry.js';
+const h = buildHeart();
+const view = new URLSearchParams(location.search).get('v') || 'ap';
+const r = new THREE.WebGLRenderer({antialias:true}); r.setSize(900,700); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.add(new THREE.AmbientLight(0xffffff,0.5)); const dl=new THREE.DirectionalLight(0xffffff,1); s.add(dl);
+const cols=[0x4488ff,0xff6644,0x44cc66,0xdddd44];
+h.chambers.forEach((c,i)=>{const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(c.positions,3)); g.setAttribute('normal',new THREE.BufferAttribute(c.normals,3)); g.setIndex(new THREE.BufferAttribute(c.indices,1));
+ s.add(new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:cols[i],side:THREE.DoubleSide,transparent:true,opacity:0.85})));});
+for (const [k,v] of Object.entries(h.landmarks)) { const m=new THREE.Mesh(new THREE.SphereGeometry(1.5),new THREE.MeshBasicMaterial({color:0xffffff})); m.position.set(...v.pos); s.add(m);}
+const cam=new THREE.PerspectiveCamera(40,900/700,1,1000); cam.up.set(0,0,1);
+const dirs={ap:[0,-1,0],lao:[0.707,-0.707,0],pa:[0,1,0],ll:[1,0,0],rao:[-0.5,-0.87,0],inf:[0,-0.3,-1]};
+const d=dirs[view]; const tgt=new THREE.Vector3(5,10,-15); cam.position.set(tgt.x+d[0]*300,tgt.y+d[1]*300,tgt.z+d[2]*300); cam.lookAt(tgt); dl.position.copy(cam.position);
+r.render(s,cam);
+</script></body></html>

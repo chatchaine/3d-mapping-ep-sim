@@ -1,0 +1,28 @@
+<!doctype html><html><head><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script></head>
+<body style="margin:0;background:#000"><script type="module">
+import * as THREE from 'three';
+import { Sim } from '../js/engine/sim.js';
+const q = new URLSearchParams(location.search);
+const cfg = JSON.parse(q.get('cfg') || '{}');
+const ch = +(q.get('ch') || 0), which = q.get('w') || 'first', t0 = +(q.get('t0')||390), span=+(q.get('span')||300);
+const sim = new Sim({ engine: cfg }); if (q.get('nosinus')) sim.sinus.setActive(false);
+const E = sim.engine; sim.advance(t0);
+const first = new Float64Array(E.nMesh).fill(NaN), second = new Float64Array(E.nMesh).fill(NaN);
+sim.subscribers.push((n,t)=>{ if (n<E.nMesh) { if (isNaN(first[n])) first[n]=t; else if (isNaN(second[n])) second[n]=t; }});
+sim.advance(+(q.get('run')||1000));
+const c = sim.heart.chambers[ch];
+const col = new Float32Array(c.count*3);
+const arr = which==='first'?first:second;
+for (let i=0;i<c.count;i++){ const n=c.offset+i; const v=arr[n]; let r=.3,g=.3,b=.3;
+ if (E.cv[n]<=0){r=1;g=1;b=1;} else if(!isNaN(v)){ const x=Math.min(1,Math.max(0,(v-t0)/span)); const h=(1-x)*0.75; const cc=new THREE.Color().setHSL(h*0.9,1,0.5); r=cc.r;g=cc.g;b=cc.b; }
+ col.set([r,g,b],3*i);}
+const r = new THREE.WebGLRenderer({antialias:true}); r.setSize(800,700); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.add(new THREE.AmbientLight(0xffffff,0.7)); const dl=new THREE.DirectionalLight(0xffffff,0.6); s.add(dl);
+const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(c.positions,3)); g.setAttribute('normal',new THREE.BufferAttribute(c.normals,3)); g.setAttribute('color',new THREE.BufferAttribute(col,3)); g.setIndex(new THREE.BufferAttribute(c.indices,1));
+s.add(new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
+const cam=new THREE.PerspectiveCamera(40,800/700,1,1000); cam.up.set(0,0,1);
+const dirs={ap:[0,-1,0],lao:[0.707,-0.707,0],laocaud:[0.6,-0.6,-0.5],pa:[0,1,0],ll:[1,0,0],rl:[-1,0,0],rao:[-0.5,-0.87,0],inf:[0,-0.2,-1]};
+const d=dirs[q.get('v')||'lao']; const cen=[0,0,0]; for(let i=0;i<c.count;i++){cen[0]+=c.positions[3*i];cen[1]+=c.positions[3*i+1];cen[2]+=c.positions[3*i+2];}
+const tgt=new THREE.Vector3(cen[0]/c.count,cen[1]/c.count,cen[2]/c.count); cam.position.set(tgt.x+d[0]*230,tgt.y+d[1]*230,tgt.z+d[2]*230); cam.lookAt(tgt); dl.position.copy(cam.position);
+r.render(s,cam); console.log('RESULT done');
+</script></body></html>

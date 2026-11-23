@@ -1,0 +1,22 @@
+// Single shortcut table (UX spec §4.2 / §9.3); the help overlay renders from it.
+export const KEYMAP = [
+  { keys: 'Space', action: 'acquire', label: 'Acquire point at the ablation tip' },
+  { keys: 'Shift+click', action: null, label: 'Acquire point on the shell (catheter moves there)' },
+  { keys: 'A', action: 'rf', label: 'RF start / stop' },
+  { keys: 'Esc', action: 'stopAll', label: 'Stop RF and pacing, close dialog' },
+  { keys: 'P', action: 'pace', label: 'Pacing on / off' },
+  { keys: 'W / S', action: null, label: 'Deflect ablation tip + / −' },
+  { keys: 'Q / E', action: null, label: 'Rotate (torque) CCW / CW' },
+  { keys: 'R / F', action: null, label: 'Advance / retract' },
+  { keys: '1 2 3 4', action: null, label: 'Sweep 25 / 50 / 100 / 200 mm/s' },
+  { keys: 'C', action: 'calipers', label: 'Calipers' },
+  { keys: 'Shift+F', action: 'freeze', label: 'Freeze EGM' },
+  { keys: 'T', action: 'tag', label: 'Tag His at the ablation tip' },
+  { keys: 'Backspace', action: 'undoPoint', label: 'Delete last point' },
+  { keys: 'V', action: 'cycleMap', label: 'Cycle map type' },
+  { keys: 'O', action: 'opacity', label: 'Cycle shell opacity' },
+  { keys: 'Ctrl+1…6', action: null, label: 'AP / PA / LAO / RAO / LL / RL views' },
+  { keys: 'H', action: 'hint', label: 'Hint' },
+  { keys: '? / F1', action: 'help', label: 'Help overlay' },
+  { keys: 'D', action: 'defib', label: 'Defibrillate 200 J (unsynchronised)' },
+];

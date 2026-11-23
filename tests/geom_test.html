@@ -1,0 +1,10 @@
+<!doctype html><html><body><script type="module">
+import { buildHeart, LANDMARKS_RAW } from '../js/engine/geometry.js';
+const t0 = performance.now();
+const h = buildHeart();
+const out = { ms: Math.round(performance.now()-t0), total: h.count, chambers: h.chambers.map(c=>[c.id,c.count,c.indices.length/3]) };
+let el=0; for (let i=0;i<h.adjLen.length;i++) el+=h.adjLen[i]; out.meanEdge=(el/h.adjLen.length).toFixed(2);
+out.lm = {};
+for (const [k,v] of Object.entries(h.landmarks)) if (v.node>=0) out.lm[k] = Math.hypot(...v.pos.map((x,i)=>x-v.raw[i])).toFixed(1);
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>

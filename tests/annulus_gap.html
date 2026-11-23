@@ -1,0 +1,21 @@
+<!doctype html><html><body><script type="module">
+// Diagnostic: for atrial nodes near the AV annuli, distance to the nearest ventricular node
+import { buildHeart, LANDMARKS_RAW } from '../js/engine/geometry.js';
+const h = buildHeart();
+const out = {};
+for (const [a, v] of [[0, 2], [1, 3]]) {
+  const ca = h.chambers[a], cv = h.chambers[v];
+  const ds = [];
+  for (let i = ca.offset; i < ca.offset + ca.count; i++) {
+    let best = 1e9;
+    for (let j = cv.offset; j < cv.offset + cv.count; j++) {
+      const d = Math.hypot(h.pos[3*i]-h.pos[3*j], h.pos[3*i+1]-h.pos[3*j+1], h.pos[3*i+2]-h.pos[3*j+2]);
+      if (d < best) best = d;
+    }
+    ds.push(best);
+  }
+  ds.sort((x, y) => x - y);
+  out[ca.id + '->' + cv.id] = { min: ds[0].toFixed(1), p1: ds[Math.floor(ds.length*0.01)].toFixed(1), p5: ds[Math.floor(ds.length*0.05)].toFixed(1), n: ds.length };
+}
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>

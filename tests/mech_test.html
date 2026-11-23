@@ -1,0 +1,13 @@
+<!doctype html><html><body><script type="module">
+import { Sim } from '../js/engine/sim.js';
+const q = new URLSearchParams(location.search);
+const cfg = JSON.parse(q.get('cfg') || '{}');
+const out = {};
+try {
+  const sim = new Sim({ engine: cfg });
+  const report = (label) => { out[label] = { aCL: Math.round(sim.status.aCL), vCL: Math.round(sim.status.vCL), rhythm: sim.status.rhythm, tachy: sim.status.tachy }; };
+  for (let i = 1; i <= (+q.get('secs') || 10); i++) { sim.advance(1000); if (i % 2 == 0) report('t' + i); }
+  out.log = sim.log.slice(0, 12).map(e => e.type + '@' + Math.round(e.t));
+} catch (err) { out.error = err.stack; }
+console.log('RESULT ' + JSON.stringify(out));
+</script></body></html>
