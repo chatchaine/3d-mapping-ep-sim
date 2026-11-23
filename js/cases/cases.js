@@ -57,7 +57,7 @@ export const CASES = [
     engine: { sinusCL: 850, ah: 85, hv: 45, avn: AVN_AP, ap: { ring: 'MA', hour: 3, antero: null, retro: { base: 10, A: 0, tau: 50, erp: 220 }, depth: 3 }, mechanism: 'natural', ablChamber: 'LA', tachyLabel: 'SVT (narrow, CL ~320)', hpsRetroExtra: 40 },
     induction: { group: 'V', text: 'Ventricular S1 600 / S2 ~260 ms, atrial S2 ~280 ms or ventricular burst ~290 ms.', iso: false },
     maneuvers: ['his_pvc', 'rv_entrainment', 'para_hisian'],
-    diagnosis: { options: ['ORT using a concealed left lateral AP', 'Atypical AVNRT with eccentric activation', 'Left atrial tachycardia', 'AVNRT with left-sided input'], correct: 0, explain: 'Eccentric (CS 1-2 earliest), fixed VA, and a His-refractory PVC that advances the A prove a retrogradely conducting AP in the circuit.' },
+    diagnosis: { options: ['ORT using a concealed left lateral AP', 'Atypical AVNRT with eccentric activation', 'Left atrial tachycardia', 'AVNRT with left-sided input'], correct: 0, explain: 'Eccentric retrograde activation (distal CS earliest) with a fixed, non-decremental VA indicates a left lateral AP. A His-refractory PVC that advances the A proves an AP is present; one that delays the A or terminates the SVT without atrial activation proves the AP is in the circuit. An RVA PVC often cannot reach a distant lateral AP early enough, so no change does not exclude it.' },
     target: { kind: 'ap', radius: 4, label: 'Lateral mitral annulus (LAO 3 o\'clock), earliest retrograde A' },
     map: { group: 'A', ref: 'CS78', woi: [-80, 40], chamber: 'LA', min: 40 },
     rfBenchmark: 4, fluoroBenchmark: 5, rfPower: 35, leftSided: true,
@@ -68,17 +68,17 @@ export const CASES = [
     ],
     quizzes: [
       { phase: 'induction', q: 'V pacing shows the earliest A at CS 1-2 with a fixed VA from CL 600 to 300 ms. This suggests:', options: ['A non-decremental left lateral AP', 'Retrograde fast pathway', 'Retrograde slow pathway', 'AT'], correct: 0, explain: 'Eccentric, non-decremental retrograde conduction is the signature of a left free-wall AP.' },
-      { phase: 'maneuvers', q: 'A PVC delivered while the His is refractory advances the next atrial EGM. This proves:', options: ['AVNRT', 'Presence of a retrogradely conducting AP', 'AT', 'His-Purkinje reentry'], correct: 1, explain: 'The impulse could not have used the His/AV node, so it reached the atrium another way.' },
+      { phase: 'maneuvers', q: 'A PVC delivered while the His is refractory advances the next atrial EGM. This proves:', options: ['AVNRT', 'Presence of a retrogradely conducting AP', 'AT', 'His-Purkinje reentry'], correct: 1, explain: 'The impulse could not have used the His/AV node, so it reached the atrium another way. This proves an AP is present; delay of the A or termination without atrial activation proves it is part of the circuit.' },
       { phase: 'ablation', q: 'Retrograde aortic or transseptal approach?', options: ['Only retrograde can reach the MA', 'Both are acceptable; choose by anatomy and skill', 'Transseptal is contraindicated', 'Ablate from the CS'], correct: 1, explain: 'Both approaches reach the lateral mitral annulus.' },
     ],
     hints: {
       induction: ['Ventricular extrastimuli or burst from the RVA.', 'S1 600 / S2 260 ms from RVA, or V burst at ~290 ms.', 'V burst 290 ms × 12 beats induces ORT in this model.'],
-      maneuvers: ['Look at the CS sequence during SVT.', 'Deliver a His-refractory PVC: does it advance the A?', 'Eccentric CS 1-2 earliest + advanced A = left lateral AP.'],
+      maneuvers: ['Look at the CS sequence during SVT.', 'Deliver a His-refractory PVC: does it advance the A?', 'Eccentric (distal CS earliest) fixed VA = left lateral AP; an RVA PVC may not advance a distant lateral AP.'],
       mapping: ['Map the mitral annulus during ORT or V pacing.', 'Bracket the earliest A between CS electrodes.', 'Target region pulses on the shell.'],
-      ablation: ['Earliest retrograde A with continuous VA.', 'Lateral MA, LAO ~3 o\'clock; block should occur within 5 s.', 'Ghost target shown.'],
+      ablation: ['Earliest retrograde A with continuous VA.', 'Lateral MA, LAO ~3 o\'clock; block usually occurs within ~5–10 s. If not, stop and re-map.', 'Ghost target shown.'],
       endpoint: ['Prove the AP is gone.', 'V pacing: VA should become concentric and decremental.', 'Wait 20–30 min and re-test.'],
     },
-    expert: ['V pacing: eccentric fixed VA (CS 1-2 earliest)', 'Induce ORT with V burst / S2', 'His-refractory PVC advances A', 'Transseptal mapping of earliest A at lateral MA', 'RF 35 W: AP block < 5 s; wait and re-test'],
+    expert: ['V pacing: eccentric fixed VA (distal CS earliest)', 'Induce ORT with V burst / S2', 'His-refractory PVC advances A', 'Transseptal mapping of earliest A at lateral MA', 'RF 35 W: AP block within ~5–10 s; wait and re-test'],
   },
   // ------------------------------------------------------------------ 3
   {
@@ -89,7 +89,7 @@ export const CASES = [
     engine: { sinusCL: 750, ah: 70, hv: 45, avn: { fp: { antero: { A: 60, tau: 70, erp: 200, k: 0.05 }, retro: { base: 45, A: 50, tau: 70, erp: 300 } } }, ap: { landmark: [-10, 16, -22], atrialChamber: 'RA', antero: { base: 10, A: 0, tau: 50, erp: 330 }, retro: { base: 10, A: 0, tau: 50, erp: 150 }, depth: 3 }, mechanism: 'natural', ablChamber: 'RA', tachyLabel: 'SVT (narrow)', hpsRetro: false, hisErp: 220 },
     induction: { group: 'A', text: 'Ventricular pacing ~290 ms from the RVA (or atrial burst) starts ORT using the septal AP retrogradely.', iso: false },
     maneuvers: ['his_pvc', 'adenosine', 'rv_entrainment'],
-    diagnosis: { options: ['Manifest posteroseptal AP with ORT', 'Mahaim (atriofascicular) fibre', 'Right free-wall AP', 'Left posterior AP'], correct: 0, explain: 'Negative delta in the inferior leads with an abrupt R in V2, earliest V at the CS os and a short HV.' },
+    diagnosis: { options: ['Manifest posteroseptal AP with ORT', 'Mahaim (atriofascicular) fibre', 'Right free-wall AP', 'Left posterior AP'], correct: 0, explain: 'Negative delta in the inferior leads with an abrupt R in V2, earliest V at the CS os and a short HV. A negative delta in lead II also raises the possibility of an epicardial (CS/MCV) pathway.' },
     target: { kind: 'ap', radius: 5, label: 'Posteroseptal region at the CS os (earliest V, QS unipolar)' },
     map: { group: 'V', ref: 'QRS', woi: [-80, 60], chamber: 'RA', min: 40 },
     rfBenchmark: 6, fluoroBenchmark: 5, rfPower: 28,
@@ -105,7 +105,7 @@ export const CASES = [
     ],
     hints: {
       induction: ['Atrial extrastimuli from the HRA.', 'S1 600 / S2 decrementing to ~260 ms blocks the AP anterogradely.', 'Atrial burst 300 ms also induces ORT.'],
-      maneuvers: ['Compare HV in sinus with ORT.', 'His-refractory PVC during ORT advances the A.', 'Pre-excitation + earliest V at CS os = posteroseptal AP.'],
+      maneuvers: ['Compare HV in sinus with ORT.', 'A His-refractory PVC during ORT should advance (or delay/terminate) the A when a septal AP is in the circuit.', 'Pre-excitation + earliest V at CS os = posteroseptal AP.'],
       mapping: ['Map ventricular activation during sinus (pre-excited) with the QRS reference.', 'Look for the earliest V at the CS os region.', 'Target region pulses on the shell.'],
       ablation: ['Earliest V before delta, QS unipolar, AP potential.', 'Stay ≥ 10 mm from the His tag; 25–30 W.', 'Ghost target shown.'],
       endpoint: ['Delta wave should vanish.', 'Check retrograde conduction with V pacing.', 'Wait and re-test.'],
@@ -116,12 +116,12 @@ export const CASES = [
   {
     id: 'wpw_ll', num: 4, title: 'WPW, manifest left lateral AP', tag: 'WPW/AP', level: 1, chamber: 'LA', mins: 25,
     patient: { age: 22, sex: 'M', summary: 'Pre-excitation found on a pre-employment ECG. Occasional palpitations.', history: 'No structural heart disease.', meds: 'None', labs: 'Normal' },
-    ecg: { baseline: ['PR 110 ms, QRS 120 ms', 'Delta negative/isoelectric in I and aVL, positive in II, III, aVF', 'Positive V1 (R > S): "type A" → left lateral'], tachy: ['ORT at CL 330 (narrow, eccentric, earliest A CS 1-2)'] },
+    ecg: { baseline: ['PR 110 ms, QRS 120 ms', 'Delta negative/isoelectric in I and aVL, positive in II, III, aVF', 'Positive V1 (R > S): "type A" → left lateral'], tachy: ['ORT at CL 330 (narrow, eccentric, earliest A distal CS)'] },
     objectives: ['Recognise left-sided pre-excitation', 'Maximise pre-excitation with CS distal pacing', 'Anterograde mapping of the earliest V'],
     engine: { sinusCL: 800, ah: 75, hv: 45, avn: AVN_AP, ap: { ring: 'MA', hour: 3, antero: { base: 10, A: 0, tau: 50, erp: 330 }, retro: { base: 10, A: 0, tau: 50, erp: 230 }, depth: 3 }, mechanism: 'natural', ablChamber: 'LA', tachyLabel: 'SVT (narrow, CL ~330)', hpsRetroExtra: 40 },
     induction: { group: 'A', text: 'Atrial burst pacing 300 ms from CS or HRA (extrastimuli rarely induce in this model).', iso: false },
     maneuvers: ['his_pvc', 'cs_pacing', 'rv_entrainment'],
-    diagnosis: { options: ['WPW, manifest left lateral AP with ORT', 'Right free-wall AP', 'Posteroseptal AP', 'Mahaim fibre'], correct: 0, explain: 'Positive V1 delta with negative I/aVL and eccentric CS 1-2 activation in ORT.' },
+    diagnosis: { options: ['WPW, manifest left lateral AP with ORT', 'Right free-wall AP', 'Posteroseptal AP', 'Mahaim fibre'], correct: 0, explain: 'Positive V1 delta with negative I/aVL and eccentric (distal CS earliest) activation in ORT.' },
     target: { kind: 'ap', radius: 4, label: 'Lateral mitral annulus (LAO 2–4 o\'clock)' },
     map: { group: 'V', ref: 'QRS', woi: [-80, 60], chamber: 'LA', min: 40 },
     rfBenchmark: 4, fluoroBenchmark: 5, rfPower: 35, leftSided: true,
@@ -137,13 +137,13 @@ export const CASES = [
       { phase: 'mapping', q: 'The best anterograde target signal is:', options: ['Largest A EGM', 'Earliest V before the delta with a QS unipolar EGM', 'Latest V', 'Fractionated A'], correct: 1, explain: 'Earliest V with QS unipolar marks the ventricular insertion.' },
     ],
     hints: {
-      induction: ['Atrial extrastimuli from HRA or CS.', 'S1 600 / S2 decrement below ~280 ms.', 'Atrial burst ~300 ms also works.'],
-      maneuvers: ['Pace CS distal vs HRA and compare pre-excitation.', 'His-refractory PVC during ORT.', 'Eccentric CS 1-2 earliest in ORT.'],
+      induction: ['Atrial pacing from the CS or HRA.', 'Atrial burst ~300 ms from distal CS (extrastimuli rarely induce in this model).', 'CS 1-2 burst 300 ms for ~3 s induces ORT.'],
+      maneuvers: ['Pace CS distal vs HRA and compare pre-excitation.', 'His-refractory PVC during ORT (an RVA PVC may not reach a lateral AP early enough to advance the A).', 'Eccentric, distal-CS-earliest activation in ORT.'],
       mapping: ['Map the lateral mitral annulus.', 'Use the QRS reference: earliest V precedes the delta.', 'Target region pulses on the shell.'],
-      ablation: ['Lateral MA ~3 o\'clock.', 'Delta should disappear within 5 s.', 'Ghost target shown.'],
+      ablation: ['Lateral MA ~3 o\'clock.', 'Delta should disappear within ~5–10 s; if not, stop and re-map.', 'Ghost target shown.'],
       endpoint: ['Delta wave gone?', 'V pacing for retrograde conduction.', 'Wait 20–30 min.'],
     },
-    expert: ['CS distal pacing maximises pre-excitation', 'A S2 induces ORT (eccentric)', 'Map earliest V at lateral MA', 'RF 35 W: delta lost < 5 s', 'No retrograde AP; non-inducible; wait'],
+    expert: ['CS distal pacing maximises pre-excitation', 'Atrial burst from CS induces ORT (eccentric)', 'Map earliest V at lateral MA', 'RF 35 W: delta lost within ~5–10 s', 'No retrograde AP; non-inducible; wait'],
   },
   // ------------------------------------------------------------------ 5
   {
@@ -165,7 +165,7 @@ export const CASES = [
     quizzes: [
       { phase: 'maneuvers', q: 'After V overdrive pacing during SVT the sequence is V-A-A-V. This indicates:', options: ['AVNRT', 'ORT', 'AT', 'Pseudo-VAAV from typical AVNRT'], correct: 2, explain: 'VAAV indicates AT, provided the atrium was truly entrained 1:1.' },
       { phase: 'mapping', q: 'A focal AT activation map shows:', options: ['~100% of TCL with early-meets-late', 'Centrifugal spread from a single earliest point', 'Two foci', 'Isochronal crowding at the TA'], correct: 1, explain: 'Focal mechanisms spread radially; total activation is well below the TCL.' },
-      { phase: 'ablation', q: 'Before ablating on the anterolateral crista you should:', options: ['Increase CF to 50 g', 'Pace at high output to check for phrenic capture', 'Give adenosine', 'Turn off irrigation'], correct: 1, explain: 'High-output pacing (10 mA) identifies the phrenic course.' },
+      { phase: 'ablation', q: 'Before ablating on the lateral crista terminalis you should:', options: ['Increase CF to 50 g', 'Pace at high output to check for phrenic capture', 'Give adenosine', 'Turn off irrigation'], correct: 1, explain: 'High-output pacing (e.g. 10–20 mA at 2 ms) identifies the phrenic course; avoid sites with diaphragmatic capture.' },
     ],
     hints: {
       induction: ['Programmed stimulation rarely induces automatic AT.', 'Start isoproterenol 2 µg/min and wait.', 'Iso 2 µg/min starts the AT within seconds (warm-up).'],
@@ -195,7 +195,7 @@ export const CASES = [
     ],
     quizzes: [
       { phase: 'mapping', q: 'During distal CS pacing a low-amplitude LSPV signal moves closer to the stimulus. It is most likely:', options: ['PV potential', 'Far-field LAA', 'Ventricular far field', 'Noise'], correct: 1, explain: 'Far-field LAA signals advance with distal CS/LAA pacing; true PVPs separate.' },
-      { phase: 'ablation', q: 'Oesophageal temperature rises from 36.5 to 38.0 °C during posterior wall RF. Best action:', options: ['Stop RF, wait, move or reduce energy', 'Continue to complete the lesion', 'Increase irrigation and continue', 'Ignore if < 40 °C'], correct: 0, explain: 'A rise > 1 °C is a stop signal.' },
+      { phase: 'ablation', q: 'Oesophageal temperature rises from 36.5 to 38.0 °C during posterior wall RF. Best action:', options: ['Stop RF, wait, move or reduce energy', 'Continue to complete the lesion', 'Increase irrigation and continue', 'Ignore if < 40 °C'], correct: 0, explain: 'A 1.5 °C rise is a clear stop signal. Most labs stop at a rise of 0.5–1 °C or an absolute ~38.5–39 °C, and the temperature can keep rising for several seconds after RF stops.' },
       { phase: 'endpoint', q: 'Which result confirms complete PV isolation?', options: ['Sinus rhythm', 'AF termination during ablation', 'Entrance and exit block, persistent after waiting/adenosine', 'Impedance drop'], correct: 2, explain: 'Isolation is defined by bidirectional block that persists.' },
     ],
     hints: {
@@ -210,8 +210,8 @@ export const CASES = [
   // ------------------------------------------------------------------ 7
   {
     id: 'cti_flutter', num: 7, title: 'CTI-dependent typical (CCW) flutter', tag: 'AFL', level: 1, chamber: 'RA', mins: 25,
-    patient: { age: 66, sex: 'M', summary: 'COPD; palpitations and dyspnoea. Atrial flutter with 2:1 conduction (ventricular rate 150). Anticoagulated > 3 weeks.', history: 'COPD', meds: 'DOAC', labs: 'Normal' },
-    ecg: { baseline: ['Atrial flutter 2:1, ventricular rate ~125–150'], tachy: ['Negative saw-tooth F waves in II, III, aVF, no isoelectric baseline', 'Positive V1, negative V6', 'Atrial CL 240 ms'] },
+    patient: { age: 66, sex: 'M', summary: 'COPD; palpitations and dyspnoea. Atrial flutter with 2:1 conduction (ventricular rate ~125). Anticoagulated > 3 weeks.', history: 'COPD', meds: 'DOAC', labs: 'Normal' },
+    ecg: { baseline: ['Atrial flutter 2:1, ventricular rate ~125'], tachy: ['Negative saw-tooth F waves in II, III, aVF, no isoelectric baseline', 'Positive V1, negative V6', 'Atrial CL 240 ms'] },
     objectives: ['Recognise CCW flutter (CS proximal → distal)', 'Entrainment: CTI PPI–TCL ≤ 20 ms', 'Complete a CTI line and prove bidirectional block'],
     engine: { sinusCL: 850, ah: 95, hv: 50, mechanism: 'ring', cristaBlock: true, cvMul: { RA: 0.7 }, reentry: { ring: 'TV', chamber: 'RA', initial: true, seedPath: 'ctiPath', behind: [-6, -3, -2], tcl: 240, burstMax: 250 }, ablChamber: 'RA', tachyLabel: 'Atrial flutter' },
     induction: { group: 'A', arrives: true, text: 'The patient arrives in flutter. If in sinus: burst from CS os or low lateral RA at 200–180 ms.', iso: false },
@@ -276,7 +276,7 @@ export const CASES = [
   {
     id: 'scar_vt', num: 9, title: 'Ischaemic scar VT (inferior LV isthmus)', tag: 'VT', level: 3, chamber: 'LV', mins: 45,
     patient: { age: 68, sex: 'M', summary: 'Inferior MI 10 years ago, LVEF 30%, ICD with 3 appropriate shocks in a month for monomorphic VT despite amiodarone.', history: 'No new ischaemia on angiography.', meds: 'Amiodarone, beta-blocker', labs: 'K 4.3, Mg 2.0, creatinine normal' },
-    ecg: { baseline: ['Sinus 70 bpm, PR 190 ms', 'Inferior Q waves; QRS 120 ms (IVCD)'], tachy: ['Monomorphic VT 145 bpm (CL 415)', 'RBBB-like V1, superior axis (negative II, III, aVF)', 'Transition V3–V4: basal inferior LV / septal exit'] },
+    ecg: { baseline: ['Sinus 70 bpm, PR 190 ms', 'Inferior Q waves; QRS 120 ms (IVCD)'], tachy: ['Monomorphic VT 145 bpm (CL 415)', 'RBBB-like V1, superior axis (negative II, III, aVF)', 'Dominant R in V2–V4 (no precordial QS): basal inferior LV / inferoseptal exit'] },
     objectives: ['Substrate map: dense scar < 0.5 mV, border zone 0.5–1.5 mV', 'Entrainment classification of isthmus sites', 'Non-inducibility with full PES'],
     engine: { sinusCL: 850, ah: 110, hv: 60, mechanism: 'scarVT', hpsRetro: false, scarVT: { channelCV: 0.1 }, reentry: { tcl: 415 }, hemoBudget: 180, ablChamber: 'LV', tachyLabel: 'Monomorphic VT' },
     induction: { group: 'V', text: 'RVA drive 600, S2 280, S3 240 (down to ERP / 200 ms).', iso: false },
@@ -292,8 +292,8 @@ export const CASES = [
     quizzes: [
       { phase: 'briefing', q: 'RBBB-like VT with superior axis after inferior MI suggests the exit is:', options: ['Anterior apical LV', 'Inferior basal LV / inferoseptal', 'RVOT', 'Lateral epicardium'], correct: 1, explain: 'RBBB = LV exit; superior axis = inferior wall exit.' },
       { phase: 'mapping', q: 'Bipolar voltage cut-offs for dense scar and border zone:', options: ['< 0.5 mV and 0.5–1.5 mV', '< 1.5 and 1.5–3 mV', '< 0.1 and 0.1–0.5 mV', '< 5 and 5–8.3 mV'], correct: 0, explain: 'Standard bipolar criteria (Marchlinski).' },
-      { phase: 'maneuvers', q: 'Concealed fusion, PPI–TCL 15 ms, S-QRS/TCL 45%. The site is:', options: ['Exit', 'Central isthmus', 'Entry', 'Bystander'], correct: 1, explain: '30–50% S-QRS/TCL = central isthmus.' },
-      { phase: 'maneuvers', q: 'Concealed fusion but PPI–TCL 70 ms. Most likely:', options: ['Exit site', 'Bystander (dead-end or adjacent)', 'Outer loop', 'Pacing artefact'], correct: 1, explain: 'Concealed fusion can occur at bystanders; PPI–TCL > 30 excludes the circuit.' },
+      { phase: 'maneuvers', q: 'Concealed fusion, PPI–TCL 15 ms, S-QRS/TCL 45%. The site is:', options: ['Exit', 'Central isthmus', 'Entry', 'Bystander'], correct: 1, explain: 'With concealed fusion and PPI–TCL ≤ 30 ms, S-QRS/TCL < 30% = exit, 30–50% = central isthmus, 50–70% = proximal (entry), > 70% = inner loop.' },
+      { phase: 'maneuvers', q: 'Concealed fusion but PPI–TCL 70 ms. Most likely:', options: ['Exit site', 'Bystander (dead-end or adjacent)', 'Outer loop', 'Pacing artefact'], correct: 1, explain: 'Concealed fusion can occur at bystanders; PPI–TCL > 30 ms places the site outside the circuit (adjacent or dead-end bystander).' },
     ],
     hints: {
       induction: ['Programmed ventricular stimulation from the RVA.', 'Drive 600 ms with S2 280 and S3 240.', 'S1 600 / S2 280 / S3 240 induces the clinical VT.'],
