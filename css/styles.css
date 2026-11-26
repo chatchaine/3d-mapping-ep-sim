@@ -173,17 +173,19 @@ input[type="range"] { accent-color: var(--c-accent); }
 .steer-pad__led { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-faint); }
 .steer-pad__led[data-contact="light"] { background: var(--c-warn); } .steer-pad__led[data-contact="good"] { background: var(--c-ok); } .steer-pad__led[data-contact="excess"] { background: var(--c-danger); }
 .steer-pad__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.steer-pad__read { margin: 4px 0; color: var(--c-text-muted); }
+.steer-pad__read { margin: 2px 0; color: var(--c-text-muted); }
+.steer-pad__sub { margin: 4px 0 2px; color: var(--c-text-faint); font-size: var(--fs-xs); letter-spacing: .04em; text-transform: uppercase; }
 .steer-pad__ch { display: flex; gap: 6px; align-items: center; color: var(--c-text-muted); }
 .tip3d { position: absolute; pointer-events: none; background: var(--c-bg-panel-alt); border: 1px solid var(--c-border-strong); border-radius: var(--radius-sm); padding: 3px 6px; font: var(--fs-xs) var(--font-mono); z-index: var(--z-popover); }
 .label3d { position: absolute; pointer-events: none; font: var(--fw-bold) 10px var(--font-ui); color: var(--c-text-muted); text-shadow: 0 0 3px #000; transform: translate(-50%, -50%); white-space: nowrap; z-index: 5; }
 
 /* ---------------------------------------------------------------- EGM */
-.egm { grid-area: egm; display: flex; flex-direction: column; background: var(--c-bg-viewport); border-top: 1px solid var(--c-border); min-width: 0; min-height: 0; }
+.egm { grid-area: egm; display: flex; flex-direction: column; background: var(--c-bg-viewport); border-top: 1px solid var(--c-border); min-width: 0; min-height: 0; overflow: hidden; }
 .egm__toolbar { display: flex; gap: var(--sp-2); align-items: center; padding: 4px var(--sp-2); background: var(--c-bg-panel); border-bottom: 1px solid var(--c-border); flex-wrap: wrap; }
 .egm__unit { font-size: var(--fs-xs); color: var(--c-text-muted); }
 .egm__measure { color: var(--c-egm-caliper); font-size: var(--fs-sm); margin-left: auto; }
-.egm__canvas { flex: 1; width: 100%; min-height: 0; display: block; cursor: crosshair; }
+.egm__canvas { flex: 1; width: 100%; min-height: 0; display: block; cursor: grab; touch-action: none; }
+.egm__canvas.is-calipers { cursor: crosshair; }
 .egm.is-frozen .egm__toolbar { box-shadow: inset 0 -2px 0 var(--c-info); }
 
 /* ---------------------------------------------------------------- alerts & toasts */

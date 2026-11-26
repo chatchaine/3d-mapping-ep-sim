@@ -100,6 +100,7 @@
         <button class="chip chip--toggle" id="tg-cath" aria-pressed="true">Catheters</button>
         <button class="chip chip--toggle" id="tg-labels" aria-pressed="true">Labels</button>
         <button class="chip chip--toggle" id="tg-others" aria-pressed="false" title="Show the other chambers">All chambers</button>
+        <button class="chip chip--toggle" id="tg-context" aria-pressed="true" title="Great vessels, coronary sinus and valve rings">Anatomy</button>
       </div>
       <div class="view-presets" role="group" aria-label="View presets">
         <button class="view-presets__btn" data-view="AP">AP</button><button class="view-presets__btn" data-view="PA">PA</button>
@@ -128,7 +129,15 @@
           <button class="btn btn--icon" data-steer="adv+" aria-label="Advance (R)">⇡</button>
           <button class="btn btn--icon" data-steer="adv-" aria-label="Retract (F)">⇣</button>
         </div>
+        <div class="steer-pad__sub">Sheath</div>
+        <div class="steer-pad__grid">
+          <button class="btn btn--icon" data-steer="sb+" aria-label="Sheath bend more (I)" title="Sheath bend + (I)">⤴</button>
+          <button class="btn btn--icon" data-steer="sr-" aria-label="Sheath rotate counter-clockwise (J)" title="Sheath rotate CCW (J)">↺</button>
+          <button class="btn btn--icon" data-steer="sr+" aria-label="Sheath rotate clockwise (L)" title="Sheath rotate CW (L)">↻</button>
+          <button class="btn btn--icon" data-steer="sb-" aria-label="Sheath bend less (K)" title="Sheath bend − (K)">⤵</button>
+        </div>
         <div class="steer-pad__read mono" id="steer-read">defl 0% · rot 0° · adv 0 mm</div>
+        <div class="steer-pad__read mono" id="steer-read2">sheath 0° @ 0°</div>
         <label class="steer-pad__ch">Chamber <select id="abl-chamber" class="select"><option>RA</option><option>LA</option><option>RV</option><option>LV</option></select></label>
       </div>
     </main>
@@ -146,6 +155,9 @@
         <button class="chip chip--toggle" id="egm-gain-up" aria-label="Increase gain">Gain +</button>
         <button class="chip chip--toggle" id="egm-cal" aria-pressed="false" title="Calipers (C)">Calipers</button>
         <button class="chip chip--toggle" id="egm-freeze" aria-pressed="false" title="Freeze (Shift+F)">Freeze</button>
+        <button class="chip" id="egm-back" aria-label="Scroll back in time" title="Scroll back (←, Shift+← = 2 s). Wheel or drag the strip also scrolls.">◀</button>
+        <button class="chip" id="egm-fwd" aria-label="Scroll forward in time" title="Scroll forward (→)">▶</button>
+        <button class="chip chip--toggle" id="egm-live" hidden title="Return to the live sweep (End)">● Live</button>
         <span class="egm__measure mono" id="egm-measure" aria-live="polite"></span>
       </div>
       <canvas class="egm__canvas" id="egm-canvas" aria-label="Scrolling electrogram traces; use Freeze and Calipers to measure intervals"></canvas>

@@ -555,3 +555,91 @@ export function annulusPoint(center, normal, radius, hour) {
   return add(center, scl(add(scl(up, Math.cos(th)), scl(right, Math.sin(th))), radius));
 }
 export { TV_N, MV_N };
+
+// ---------------------------------------------------------------- display mesh
+// A finer shell built from the same SDFs and orifices as the engine mesh, with
+// endocardial relief for realism: ventricular trabeculations (densest toward the apex),
+// RA pectinate muscles anterior to the crista terminalis, a raised crista ridge, and
+// LAA pectinates. The relief is purely visual (<= ~1.5 mm); every display vertex maps to
+// its nearest engine node in the same chamber for map colouring and picking.
+
+function hash3(i, j, k) {
+  let h = (i * 374761393 + j * 668265263 + k * 1274126177) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const fx = x - xi, fy = y - yi, fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy), w = fz * fz * (3 - 2 * fz);
+  const l = (a, b, t) => a + (b - a) * t;
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz);
+  return l(l(l(c(0, 0, 0), c(1, 0, 0), u), l(c(0, 1, 0), c(1, 1, 0), u), v), l(l(c(0, 0, 1), c(1, 0, 1), u), l(c(0, 1, 1), c(1, 1, 1), u), v), w);
+}
+// ridged noise in [0,1]: thin raised ridges where the noise crosses 0.5
+const ridge = (x, y, z) => { const r = 1 - Math.abs(2 * vnoise(x, y, z) - 1); return r * r * r; };
+const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function distToPolyline(p, line) {
+  let best = Infinity;
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i], ab = sub(line[i + 1], a), ap = sub(p, a);
+    const t = Math.max(0, Math.min(1, dot(ap, ab) / dot(ab, ab)));
+    best = Math.min(best, len(sub(ap, scl(ab, t))));
+  }
+  return best;
+}
+const CRISTA_LINE = [[-30, 21, 40], L.CRISTA_TOP, L.CRISTA_MID, L.CRISTA_BOTTOM, [-28, 27, -40]];
+const RV_BASE = L.TV_CENTER, RV_AX = norm(sub(L.RV_APEX, L.TV_CENTER)), RV_AXL = len(sub(L.RV_APEX, L.TV_CENTER));
+const LV_AXL = len(sub(L.LV_APEX, LV_BASE));
+const LAA_C = [52, 16, 29];
+
+// coordinates in a frame whose first axis is `ax`, scaled so ridges elongate along ax
+const FRAMES = new Map();
+function stretched(p, ax, sAlong, sAcross) {
+  let B = FRAMES.get(ax);
+  if (!B) { B = basisFromAxis(ax); FRAMES.set(ax, B); }
+  return [dot(p, B[0]) * sAlong, dot(p, B[1]) * sAcross, dot(p, B[2]) * sAcross];
+}
+
+// inward relief (mm, positive = protrudes into the cavity)
+function relief(id, p) {
+  const base = (vnoise(p[0] * 0.06 + 11, p[1] * 0.06, p[2] * 0.06) - 0.5) * 0.6; // gentle irregularity
+  if (id === 'LV' || id === 'RV') {
+    const ax = id === 'LV' ? LV_AXIS : RV_AX, b0 = id === 'LV' ? LV_BASE : RV_BASE, L0 = id === 'LV' ? LV_AXL : RV_AXL;
+    const apical = sstep(0.15, 0.95, dot(sub(p, b0), ax) / L0);
+    const q = stretched(p, ax, 0.09, 0.32);
+    const tr = ridge(q[0], q[1], q[2]) * 0.75 + ridge(q[0] * 1.9 + 5, q[1] * 1.9, q[2] * 1.9) * 0.35;
+    const amp = id === 'RV' ? 1.6 * (0.35 + 0.65 * apical) : 1.15 * apical;
+    return base + tr * amp;
+  }
+  if (id === 'RA') {
+    const dc = distToPolyline(p, CRISTA_LINE);
+    const crista = 1.4 * Math.exp(-(dc * dc) / 10);
+    // pectinates: parallel ridges on the anterolateral wall / appendage (anterior to the crista)
+    const anterior = sstep(20, 10, p[1]) * sstep(-20, -34, p[0]) * sstep(-40, -26, p[2]);
+    const pm = Math.pow(Math.abs(Math.sin(p[2] * 0.6 + vnoise(p[0] * 0.08, p[1] * 0.08, p[2] * 0.04) * 2)), 8);
+    return base * 0.6 + crista + pm * 0.7 * anterior;
+  }
+  // LA: smooth body, pectinate ridges in the appendage only
+  const dA = len(sub(p, LAA_C));
+  const laa = sstep(14, 6, dA);
+  return base * 0.6 + laa * ridge(p[0] * 0.35, p[1] * 0.35, p[2] * 0.35) * 0.9;
+}
+
+export function buildVisualHeart(heart, h = 1.5) {
+  return heart.chambers.map((ec, ci) => {
+    const vc = buildChamber(ec.id, h);
+    const n = vc.positions.length / 3;
+    const P = vc.positions, N = vc.normals;
+    const nodeOf = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      const p = [P[3 * i], P[3 * i + 1], P[3 * i + 2]];
+      nodeOf[i] = heart.grid.nearest(p, 40, (k) => heart.chamber[k] === ci);
+      // fade the relief out at orifice rims so valve / vein openings stay clean
+      const rim = heart.boundary[nodeOf[i]] ? 0.2 : 1;
+      const d = relief(ec.id, p) * rim;
+      P[3 * i] -= N[3 * i] * d; P[3 * i + 1] -= N[3 * i + 1] * d; P[3 * i + 2] -= N[3 * i + 2] * d;
+    }
+    return { id: ec.id, positions: P, indices: vc.indices, nodeOf };
+  });
+}

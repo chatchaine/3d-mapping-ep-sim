@@ -336,7 +336,7 @@ class App {
     $('map-type').addEventListener('change', (e) => { this.vp.mode = e.target.value; this.updateColorbar(); });
     $('abl-chamber').addEventListener('change', (e) => this.setAblChamber(e.target.value));
     const tg = (id, key, fn) => $(id).addEventListener('click', (e) => { const b = e.currentTarget; const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); if (key) this.vp.show[key] = on; fn?.(on); this.vp.dirty = true; });
-    tg('tg-points', 'points'); tg('tg-tags', 'tags'); tg('tg-cath', 'cath'); tg('tg-labels', 'labels'); tg('tg-others', 'others', () => this.vp.updateVisibility());
+    tg('tg-points', 'points'); tg('tg-tags', 'tags'); tg('tg-cath', 'cath'); tg('tg-labels', 'labels'); tg('tg-others', 'others', () => this.vp.updateVisibility()); tg('tg-context', 'context', () => this.vp.updateVisibility());
     $('tg-opacity').addEventListener('click', () => this.cycleOpacity());
     document.querySelectorAll('.view-presets__btn').forEach((b) => b.addEventListener('click', () => this.vp.setView(b.dataset.view)));
     document.querySelectorAll('#sweep-seg .segmented__option').forEach((b) => b.addEventListener('click', () => this.setSweep(Number(b.dataset.speed))));
@@ -344,6 +344,10 @@ class App {
     $('egm-gain-dn').addEventListener('click', () => { this.egm.gain = Math.max(0.25, this.egm.gain / 1.25); });
     $('egm-cal').addEventListener('click', () => this.toggleCalipers());
     $('egm-freeze').addEventListener('click', () => this.toggleFreeze());
+    $('egm-live').addEventListener('click', () => { this.egm.goLive(); this.syncFreeze(); });
+    $('egm-back').addEventListener('click', () => this.egm.scrollPage(-1));
+    $('egm-fwd').addEventListener('click', () => this.egm.scrollPage(1));
+    this.egm.onFreezeChange = () => this.syncFreeze();
     $('colorbar').addEventListener('click', () => $('ms-ref')?.focus());
     // steering pad: press and hold
     document.querySelectorAll('[data-steer]').forEach((b) => {
@@ -354,11 +358,28 @@ class App {
     // viewport mouse
     const cv = $('viewport-canvas');
     cv.addEventListener('pointerdown', (e) => { if (e.shiftKey && this.sim) { e.preventDefault(); e.stopPropagation(); this.surfaceClick(e); } }, true);
+    // Ctrl/Alt + drag: drag the ablation tip freely over the wall of its chamber
+    cv.addEventListener('pointerdown', (e) => {
+      if (!(e.ctrlKey || e.altKey) || !this.sim || e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      this.tipDrag = true; this.sim.catheters.ABL.dragging = true; cv.setPointerCapture?.(e.pointerId);
+      this.dragTip(e);
+    }, true);
+    cv.addEventListener('pointermove', (e) => { if (this.tipDrag) { e.stopPropagation(); this.dragTip(e); } }, true);
+    window.addEventListener('pointerup', () => { if (this.tipDrag) { this.tipDrag = false; if (this.sim) this.sim.catheters.ABL.dragging = false; } });
     cv.addEventListener('pointermove', (e) => this.hover(e));
     cv.addEventListener('dblclick', (e) => { const h = this.vp.pickSurface(e.clientX, e.clientY); if (h) this.vp.controls.target.copy(this.vp.root.localToWorld(new (this.vp.camera.position.constructor)(...h.pos))); });
     window.addEventListener('keydown', (e) => this.onKey(e));
     window.addEventListener('keyup', (e) => { this.held.delete(STEER_KEYS[e.key.toLowerCase()]); });
     window.addEventListener('blur', () => this.held.clear());
+  }
+
+  dragTip(e) {
+    const now = performance.now(); if (now - (this._drg || 0) < 35) return; this._drg = now;
+    const abl = this.sim.catheters.ABL;
+    const hit = this.vp.pickSurface(e.clientX, e.clientY);
+    if (!hit || hit.chamber !== abl.chamber) return;
+    abl.moveTo(hit.pos, 10); this.sim.updateABL();
   }
 
   hover(e) {
@@ -374,8 +395,9 @@ class App {
   }
 
   setSweep(s) { this.egm.setSpeed(s); document.querySelectorAll('#sweep-seg .segmented__option').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.speed) === s))); }
-  toggleCalipers() { this.egm.calipers = !this.egm.calipers; $('egm-cal').setAttribute('aria-pressed', String(this.egm.calipers)); if (this.egm.calipers && !this.egm.frozen) this.toggleFreeze(); }
-  toggleFreeze() { this.egm.setFrozen(!this.egm.frozen); $('egm-freeze').setAttribute('aria-pressed', String(this.egm.frozen)); document.querySelector('.egm').classList.toggle('is-frozen', this.egm.frozen); }
+  toggleCalipers() { this.egm.calipers = !this.egm.calipers; $('egm-cal').setAttribute('aria-pressed', String(this.egm.calipers)); $('egm-canvas').classList.toggle('is-calipers', this.egm.calipers); if (this.egm.calipers && !this.egm.frozen) this.toggleFreeze(); }
+  toggleFreeze() { this.egm.setFrozen(!this.egm.frozen); this.syncFreeze(); }
+  syncFreeze() { const f = this.egm.frozen; $('egm-freeze').setAttribute('aria-pressed', String(f)); $('egm-live').hidden = !f; document.querySelector('.egm').classList.toggle('is-frozen', f); }
   cycleOpacity() { this.vp.opacityMode = (this.vp.opacityMode + 1) % 3; this.vp.updateVisibility(); $('tg-opacity').setAttribute('aria-pressed', String(this.vp.opacityMode > 0)); }
 
   onKey(e) {
@@ -407,6 +429,9 @@ class App {
       case '1': case '2': case '3': case '4': this.setSweep([25, 50, 100, 200][Number(k) - 1]); break;
       case '[': this.egm.nudge(e.shiftKey ? -10 : -1); break;
       case ']': this.egm.nudge(e.shiftKey ? 10 : 1); break;
+      case 'arrowleft': e.preventDefault(); this.egm.scrollBy(e.shiftKey ? -2000 : -250); break;
+      case 'arrowright': e.preventDefault(); this.egm.scrollBy(e.shiftKey ? 2000 : 250); break;
+      case 'end': e.preventDefault(); this.egm.goLive(); break;
       default: break;
     }
   }
@@ -436,6 +461,8 @@ class App {
         if (k === 'defl+') abl.steer(r, 0, 0); else if (k === 'defl-') abl.steer(-r, 0, 0);
         else if (k === 'rot+') abl.steer(0, 2.5, 0); else if (k === 'rot-') abl.steer(0, -2.5, 0);
         else if (k === 'adv+') abl.steer(0, 0, 0.6); else if (k === 'adv-') abl.steer(0, 0, -0.6);
+        else if (k === 'sb+') abl.steer(0, 0, 0, 1.2); else if (k === 'sb-') abl.steer(0, 0, 0, -1.2);
+        else if (k === 'sr+') abl.steer(0, 0, 0, 0, 2.5); else if (k === 'sr-') abl.steer(0, 0, 0, 0, -2.5);
       }
     }
     if (!this.paused && !isModalOpen()) sim.advance(dt * this.speed);
@@ -450,7 +477,8 @@ class App {
       const abl = sim.catheters.ABL; const led = $('steer-led');
       led.dataset.contact = abl.cf < 3 ? 'none' : abl.cf < 10 ? 'light' : abl.cf <= 40 ? 'good' : 'excess';
       $('steer-cf').textContent = `${abl.cf.toFixed(0)} g`;
-      $('steer-read').textContent = `defl ${Math.round(abl.deflect * 100)}% · rot ${Math.round(abl.rotate)}° · adv ${Math.round(abl.advance)} mm`;
+      $('steer-read').textContent = `defl ${abl.deflect > 0 ? '+' : ''}${Math.round(abl.deflect * 100)}% · rot ${Math.round(abl.rotate)}° · adv ${Math.round(abl.advance)} mm`;
+      $('steer-read2').textContent = `sheath ${Math.round(abl.sheathBend)}° @ ${Math.round(abl.sheathRot)}°`;
       const s = sim.mapping.settings;
       $('vp-status').textContent = `${sim.mapping.points.length} pts · ${this.vp.mode.toUpperCase()} · ref ${s.ref} · WOI ${s.woi[0]}…${s.woi[1]} ms · fill ${s.fill} mm · ABL ${abl.chamber}`;
       if (now - (this._desc || 0) > 5000) {
@@ -461,7 +489,7 @@ class App {
   }
 }
 
-const STEER_KEYS = { w: 'defl+', s: 'defl-', q: 'rot-', e: 'rot+', r: 'adv+', f: 'adv-' };
+const STEER_KEYS = { w: 'defl+', s: 'defl-', q: 'rot-', e: 'rot+', r: 'adv+', f: 'adv-', i: 'sb+', k: 'sb-', j: 'sr-', l: 'sr+' };
 
 function formatMeasure(d) {
   if (d.text) return d.text;

@@ -24,17 +24,21 @@
   10. RVOT PVC/VT
   11. VF / electrical storm
 - **Enforced workflow.** The steps are briefing (vignette, schematic 12-lead ECG, quiz), catheter placement, baseline intervals with calipers, induction, diagnostic maneuvers and diagnosis commit, mapping, ablation, endpoint tests, and debrief. RF is gated until a diagnosis is committed (except in the VF case).
-- **3D viewport.** Procedural RA/LA/RV/LV shells (about 14k nodes) with landmarks.
+- **3D viewport.** Procedural RA/LA/RV/LV shells (about 14k engine nodes) with landmarks. They are displayed as finer shells with endocardial relief (ventricular trabeculations, RA pectinate muscles and crista terminalis, LAA pectinates). Translucent surrounding anatomy (aorta, pulmonary artery, caval and pulmonary veins, coronary sinus, valve annuli) can be toggled with **Anatomy**.
   - **Maps:** LAT and bipolar voltage maps built from acquired points, using the reference channel, window of interest (WOI), fill radius and colour bar. A live propagation view is also available.
   - **Point acquisition:** Space at the catheter tip, or Shift+click on the shell.
   - **Views:** AP/PA/LAO/RAO/LL/RL presets, orbit and zoom.
-  - **Ablation catheter:** steerable (deflection, torque, advance) with a contact-force arrow.
+  - **Ablation catheter:** bidirectional deflection, torque and advance, plus a steerable sheath (bend and rotation), so the tip can reach any wall of the chamber. Ctrl/Alt+drag moves the tip over the wall directly. The distal shaft flexes against the wall, and a contact-force arrow is shown.
+  - **Catheters:** the electrodes are placed along the curved shaft and bend with it (3.5 mm ablation tip, 2-5-2 mm ring spacing).
 - **Propagation engine.** An event-driven graph cellular automaton with restitution, decremental AV-nodal pathways (dual physiology, Wenckebach), accessory pathways and a His–Purkinje system. Mechanisms include:
   - macro-reentry (CTI, perimitral, scar isthmus)
   - automatic and triggered foci
   - AF drivers in the pulmonary veins
   - VF
-- **EGM panel.** A sweeping display of I, II, V1, HRA, His d/p, CS 9-10…1-2, RVA and ABL d/p (plus a PV loop in AF), synthesised from the live activation. It has sweep speed, gain, freeze and calipers.
+- **EGM panel.** A sweeping display of I, II, aVF, V1, V6, HRA, His d/p, CS 9-10…1-2, RVA and ABL d/p (plus a PV loop in AF), synthesised from the live activation.
+  - **Surface ECG:** the heart vector includes the transmural (endocardium to epicardium) wavefront. Sinus rhythm gives a small P wave, septal q in I/V6, an rS complex in V1, a concordant asymmetric T wave, and mild baseline wander.
+  - **Intracardiac EGMs:** band-pass filtered like a recording system (bipolar 30 Hz high-pass), so near-field signals are sharp and far-field signals are small.
+  - **Controls:** sweep speed, gain, freeze and calipers. The last 20 s can be scrolled left and right with the mouse wheel, by dragging the strip, with the scroll bar, with ◀ ▶ or with ←/→. **Live** (or End) returns to the live sweep.
 - **Stimulator.** S1, S1S2(S3), burst and decremental pacing, with entrainment analysis (PPI, PPI−TCL, VAV/VAAV, SA). Also offers a His-refractory PVC, para-Hisian pacing, isoproterenol, adenosine and storm drugs.
 - **RF generator.**
   - **Delivery:** power, duration and contact force settings, with live impedance, temperature and a lesion quality index (LQI). Lesion tags are tiered weak/good/strong/excessive.

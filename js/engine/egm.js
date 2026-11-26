@@ -11,10 +11,19 @@
 // "away", which yields the unipolar QS used as an ablation cue.
 //
 // ECG: the heart vector is the sum of (local propagation direction x tissue mass) of
-// the nodes activating each millisecond; leads are projections on lead vectors. The T
-// wave is a delayed, broad, concordant copy at t + APD.
+// the nodes activating each millisecond; leads are projections on lead vectors. Atrial
+// and ventricular contributions use separate kernels (broad, rounded P wave; narrow
+// QRS). The T wave is a delayed, concordant copy at t + APD shaped by an asymmetric
+// kernel (slow upstroke, faster downstroke). Surface leads get a 0.05-40 Hz style
+// "monitor" look: band-limited noise and slow respiratory baseline wander.
+//
+// Intracardiac channels are band-pass filtered like a clinical recording system
+// (bipolar 30-300 Hz): the first-order 30 Hz high-pass turns broad far-field humps
+// into small biphasic deflections and keeps near-field signals sharp. Unipolar
+// channels use a 0.5 Hz high-pass so the QS / rS morphology is preserved.
 
 import { TISSUE, TISSUE_TABLE, hash01 } from './propagation.js';
+import { CHAMBER_DEFS, makeChamberSDF } from './geometry.js';
 
 export const RING = 20000; // 20 s at 1 kHz
 const LAG = 120; // finalize delay (ms) so kernels and fractionation are complete
@@ -25,18 +34,33 @@ const LEADS = {
   II: [0.5, 0, -0.866],
   V1: [-0.45, -0.85, -0.1],
   aVF: [0, 0, -1],
+  V6: [0.88, 0.25, -0.38],
 };
 
 const KERNELS = [makeKernel(1.4), makeKernel(3), makeKernel(6.5)];
-const KERNEL_ECG = makeKernel(5);
-const KERNEL_T = makeKernel(32);
+const KERNEL_QRS = makeKernel(4);
+const KERNEL_P = makeKernel(10);
+const KERNEL_T = makeKernel(40, 24); // rise 40 ms, fall 24 ms
+const P_SCALE = 0.3; // P wave ~10-20% of the QRS amplitude, as on a clinical ECG
+const TANGENTIAL = 0.4; // weight of along-the-wall spread in the ventricular heart vector
+const TRANSMURAL = [0, 0, 0.35, 2.6]; // by chamber index (RA, LA, RV, LV): wall-thickness weight
+const SEPTAL_DAMP = 0.7;
+const T_GAIN = 0.2; // T-wave impulse weight relative to depolarisation (T ≈ 25-35% of R)
+const SURF_SCALE = 0.0017; // display units ≈ mV: normal sinus R wave ~1.3
 
-function makeKernel(w) {
-  const h = Math.ceil(w * 3);
+// Gaussian kernel; with two widths it is asymmetric (wl = side before the impulse
+// time, i.e. the rising limb of the output; wr = the falling limb).
+function makeKernel(wl, wr = wl) {
+  const h = Math.ceil(Math.max(wl, wr) * 3);
   const k = new Float32Array(2 * h + 1);
-  for (let i = -h; i <= h; i++) k[i + h] = Math.exp(-(i * i) / (2 * w * w));
+  for (let i = -h; i <= h; i++) { const w = i < 0 ? wl : wr; k[i + h] = Math.exp(-(i * i) / (2 * w * w)); }
   return { h, k };
 }
+
+// first-order high-pass coefficient for a cutoff fc (Hz) at 1 kHz sampling
+const hpCoef = (fc) => { const rc = 1 / (2 * Math.PI * fc); return rc / (rc + 0.001); };
+const HP_BIP = hpCoef(30), HP_UNI = hpCoef(0.5);
+const BIP_GAIN = 1.25; // restores near-field amplitude after the high-pass
 
 export class EGMSystem {
   constructor(sim) {
@@ -52,7 +76,20 @@ export class EGMSystem {
     for (const [id, v] of Object.entries(LEADS)) {
       const ch = this._mk(id, id, 'surface');
       ch.lead = v;
-      ch.imp = new Float32Array(RING); ch.impT = new Float32Array(RING);
+      ch.imp = new Float32Array(RING); ch.impA = new Float32Array(RING); ch.impT = new Float32Array(RING);
+      ch.nz = 0; ch.phase = hash01(id.charCodeAt(0) * 13 + id.length) * Math.PI * 2;
+    }
+    // per-node transmural weight: septal surfaces of the two ventricles largely cancel
+    // each other, so septal nodes contribute less than free-wall nodes
+    const heart = sim.heart, nM = this.eng.nMesh;
+    this.tmW = new Float32Array(nM);
+    const sdfRV = makeChamberSDF(CHAMBER_DEFS.RV), sdfLV = makeChamberSDF(CHAMBER_DEFS.LV);
+    for (let n = 0; n < nM; n++) {
+      const c = heart.chamber[n]; if (c < 2) continue;
+      const x = heart.pos[3 * n], y = heart.pos[3 * n + 1], z = heart.pos[3 * n + 2];
+      const dOther = c === 3 ? sdfRV(x, y, z) : sdfLV(x, y, z);
+      const septal = Math.max(0, Math.min(1, (16 - dOther) / 8)); // 1 within ~8 mm of the other cavity
+      this.tmW[n] = TRANSMURAL[c] * (1 - SEPTAL_DAMP * septal);
     }
     sim.subscribers.push((n, t, src, erp) => this.onAct(n, t, src, erp));
   }
@@ -73,6 +110,7 @@ export class EGMSystem {
       ch.entryOf = new Int32Array(this.eng.N).fill(-1);
       ch.entries = [];
       ch.actsA = []; ch.actsV = [];
+      ch.hx = 0; ch.hy = 0; // band-pass filter state
     }
     for (const n of ch.entries) ch.entryOf[n] = -1;
     ch.p1 = p1; ch.p2 = p2;
@@ -120,13 +158,21 @@ export class EGMSystem {
     const tt = TISSUE_TABLE[tissue];
     // ---- ECG
     if (isMesh && tt.mass > 0 && (dx || dy || dz)) {
-      const m = tt.mass * (eng.chamber[n] >= 2 ? 1 : 1.6);
+      const vent = eng.chamber[n] >= 2;
+      const m = tt.mass * (vent ? 1 : 1.6);
       const ti = idx % RING, tT = (idx + Math.round(erp + 25)) % RING;
+      // ventricles: add the transmural (endocardium -> epicardium) wavefront, which
+      // dominates the clinical QRS; it scales with wall thickness (LV >> RV)
+      let tx = 0, ty = 0, tz = 0;
+      if (vent) {
+        const N = this.sim.heart.normal, w = this.tmW[n] * m;
+        tx = N[3 * n] * w; ty = N[3 * n + 1] * w; tz = N[3 * n + 2] * w;
+      }
       for (const id in LEADS) {
         const ch = this.byId[id];
-        const pr = (dx * ch.lead[0] + dy * ch.lead[1] + dz * ch.lead[2]) * m;
-        ch.imp[ti] += pr;
-        if (eng.chamber[n] >= 2) ch.impT[tT] += pr * 0.07;
+        const pr = (dx * ch.lead[0] + dy * ch.lead[1] + dz * ch.lead[2]) * m * (vent ? TANGENTIAL : 1) + tx * ch.lead[0] + ty * ch.lead[1] + tz * ch.lead[2];
+        if (vent) { ch.imp[ti] += pr; ch.impT[tT] += pr * T_GAIN; }
+        else ch.impA[ti] += pr * P_SCALE;
       }
     }
     // ---- intracardiac channels
@@ -187,26 +233,40 @@ export class EGMSystem {
   _finalizeSample(s) {
     const i = ((s % RING) + RING) % RING;
     const stim = this.stimMark[i];
+    // respiration (~15/min) shared by all surface leads, each lead with its own phase
+    const resp = Math.sin((s / 4000) * Math.PI * 2);
     for (const ch of this.channels) {
       let v = 0;
       if (ch.kind === 'surface') {
-        v = conv(ch.imp, KERNEL_ECG, s) * 0.022 + conv(ch.impT, KERNEL_T, s) * 0.022;
-        v += (hash01(s * 31 + ch.id.length) - 0.5) * 0.02;
+        v = (conv(ch.imp, KERNEL_QRS, s) + conv(ch.impA, KERNEL_P, s) + conv(ch.impT, KERNEL_T, s)) * SURF_SCALE;
+        // band-limited (smoothed) muscle/amplifier noise instead of white jitter
+        ch.nz = ch.nz * 0.82 + (hash01(s * 31 + ch.id.length * 7 + ch.id.charCodeAt(0)) - 0.5) * 0.18;
+        v += ch.nz * 0.035;
+        // slow baseline wander from respiration
+        v += 0.018 * Math.sin((s / 4000) * Math.PI * 2 + ch.phase) + 0.006 * resp;
+        // pacing artefact: very narrow spike on the surface ECG
+        if (this.stimMark[i]) v += 1.1;
+        else if (this.stimMark[(i - 1 + RING) % RING]) v -= 0.25;
       } else {
-        v = conv(ch.imp[0], KERNELS[0], s) + conv(ch.imp[1], KERNELS[1], s) + conv(ch.imp[2], KERNELS[2], s);
+        const raw = conv(ch.imp[0], KERNELS[0], s) + conv(ch.imp[1], KERNELS[1], s) + conv(ch.imp[2], KERNELS[2], s);
+        // recording-system band-pass (bipolar 30 Hz HP, unipolar 0.5 Hz HP)
+        const uni = !ch.p2;
+        ch.hy = (uni ? HP_UNI : HP_BIP) * (ch.hy + raw - ch.hx); ch.hx = raw;
+        if (!Number.isFinite(ch.hy)) ch.hy = 0;
+        v = uni ? ch.hy : ch.hy * BIP_GAIN;
         v += (hash01(s * 17 + ch.label.length * 101) - 0.5) * this.noise * 2;
-      }
-      // pacing artefact: 2 ms saturated spike with exponential tail
-      for (let k = 0; k < 12; k++) {
-        const j = (i - k + RING) % RING;
-        if (this.stimMark[j]) v += k < 2 ? 3 : 0.4 * Math.exp(-k / 3);
+        // pacing artefact: 2 ms saturated spike with an amplifier-recovery tail
+        for (let k = 0; k < 12; k++) {
+          const j = (i - k + RING) % RING;
+          if (this.stimMark[j]) v += k < 2 ? 3 : k < 3 ? -1.2 : 0.4 * Math.exp(-k / 3);
+        }
       }
       ch.out[i] = v;
     }
     // clear impulse slots that can no longer contribute
     const old = (i - 200 + RING) % RING;
     for (const ch of this.channels) {
-      if (ch.kind === 'surface') { ch.imp[old] = 0; ch.impT[old] = 0; }
+      if (ch.kind === 'surface') { ch.imp[old] = 0; ch.impA[old] = 0; ch.impT[old] = 0; }
       else { ch.imp[0][old] = 0; ch.imp[1][old] = 0; ch.imp[2][old] = 0; }
     }
     this.stimMark[(i - 200 + RING) % RING] = 0;

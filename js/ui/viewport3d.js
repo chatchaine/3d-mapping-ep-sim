@@ -5,7 +5,9 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CHAMBER_IDS, LANDMARKS_RAW as LR, PV_DEFS } from '../engine/geometry.js';
+import { CHAMBER_IDS, LANDMARKS_RAW as LR, PV_DEFS, TV_N, MV_N, buildVisualHeart } from '../engine/geometry.js';
+
+let visualCache = null; // display meshes are built once per session (same anatomy for every case)
 
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
 const toRGB = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
@@ -53,11 +55,13 @@ export class Viewport3D {
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true; this.controls.dampingFactor = 0.1;
     this.controls.minDistance = 40; this.controls.maxDistance = 600;
-    this.scene.add(new THREE.HemisphereLight(0xdfe8f0, 0x202830, 0.9));
-    this.key = new THREE.DirectionalLight(0xffffff, 1.4); this.camera.add(this.key); this.key.position.set(40, 80, 60);
+    this.scene.add(new THREE.HemisphereLight(0xe8eef5, 0x1a2028, 0.75));
+    this.key = new THREE.DirectionalLight(0xffffff, 1.5); this.camera.add(this.key); this.key.position.set(40, 80, 60);
+    const fill = new THREE.DirectionalLight(0xbfd4ff, 0.45); this.camera.add(fill); fill.position.set(-70, -20, 30);
+    const rim = new THREE.DirectionalLight(0xffe2d0, 0.5); this.camera.add(rim); rim.position.set(0, 40, -80);
     this.scene.add(this.camera);
     this.root = new THREE.Group(); this.root.rotation.x = -Math.PI / 2; this.scene.add(this.root);
-    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false };
+    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: true };
     this.ghost = null; this.labels = [];
     this.raycaster = new THREE.Raycaster();
     this.tween = null;
@@ -90,12 +94,19 @@ export class Viewport3D {
       g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(c.count * 3).fill(0.55), 3));
       g.setIndex(new THREE.BufferAttribute(c.indices, 1));
       g.computeBoundingSphere();
-      const m = new THREE.MeshPhongMaterial({ vertexColors: true, side: THREE.DoubleSide, shininess: 22, specular: 0x222222, transparent: true, opacity: 1 });
+      // moist endocardium look: soft diffuse with a light clear-coat sheen
+      const m = new THREE.MeshPhysicalMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.62, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.45, transparent: true, opacity: 1 });
       const mesh = new THREE.Mesh(g, m);
-      mesh.userData = { chamber: c, id: c.id };
+      mesh.userData = { chamber: c, id: c.id, nodeOf: null, pos: c.positions };
       this.root.add(mesh);
       this.meshes.push(mesh);
     }
+    this.nodeCol = new Float32Array(heart.count * 3);
+    this._buildContext();
+    // swap in the finer display shells (built once, off the first frame)
+    const swap = () => { if (this.sim === sim) this._useVisual(visualCache); };
+    if (visualCache) swap();
+    else setTimeout(() => { if (this.sim !== sim) return; visualCache = buildVisualHeart(heart, 1.5); swap(); }, 30);
     // points & tags (instanced)
     const sph = new THREE.SphereGeometry(1, 10, 8);
     this.ptMesh = new THREE.InstancedMesh(sph, new THREE.MeshPhongMaterial({ color: 0xffffff }), 4000); this.ptMesh.count = 0; this.root.add(this.ptMesh);
@@ -104,7 +115,7 @@ export class Viewport3D {
     this.ptMesh.frustumCulled = this.tagMesh.frustumCulled = this.specMesh.frustumCulled = false;
     this.specialTags = [];
     // catheters
-    this.cathGroup = new THREE.Group(); this.root.add(this.cathGroup);
+    this.cathGroup = new THREE.Group(); this.root.add(this.cathGroup); this.cfArrow = null;
     this.cathObjs = {};
     // landmark labels
     const host = this.container;
@@ -142,6 +153,7 @@ export class Viewport3D {
       m.material.depthWrite = main && op === 1;
       m.renderOrder = main ? 1 : 2;
     });
+    if (this.context) this.context.visible = this.show.context;
     this.dirty = true;
   }
 
@@ -175,9 +187,11 @@ export class Viewport3D {
     const [lo, hi] = s.woi;
     const vlo = Math.log(s.voltLo), vhi = Math.log(s.voltHi);
     const now = sim.t;
+    const NC = this.nodeCol;
     for (const mesh of this.meshes) {
       if (!mesh.visible) continue;
-      const c = mesh.userData.chamber, col = mesh.geometry.attributes.color.array;
+      const c = mesh.userData.chamber;
+      // 1) colour per engine node
       for (let v = 0; v < c.count; v++) {
         const n = c.offset + v;
         let r = this.grey[0], g = this.grey[1], b = this.grey[2];
@@ -196,10 +210,79 @@ export class Viewport3D {
           else if (dt >= 0 && dt < 260) { const t = dt / 260; const k = Math.round(t * 255) * 3; r = this.latLUT[k]; g = this.latLUT[k + 1]; b = this.latLUT[k + 2]; }
           else { r = 0.16; g = 0.2; b = 0.32; }
         }
-        col[3 * v] = r; col[3 * v + 1] = g; col[3 * v + 2] = b;
+        NC[3 * n] = r; NC[3 * n + 1] = g; NC[3 * n + 2] = b;
+      }
+      // 2) expand to the display vertices
+      const col = mesh.geometry.attributes.color.array, nodeOf = mesh.userData.nodeOf;
+      const nv = col.length / 3;
+      for (let v = 0; v < nv; v++) {
+        const n = nodeOf ? nodeOf[v] : c.offset + v;
+        col[3 * v] = NC[3 * n]; col[3 * v + 1] = NC[3 * n + 1]; col[3 * v + 2] = NC[3 * n + 2];
       }
       mesh.geometry.attributes.color.needsUpdate = true;
     }
+  }
+
+  // Replace the engine-resolution shells with the finer, relief-detailed display shells.
+  _useVisual(vis) {
+    if (!vis) return;
+    this.meshes.forEach((mesh, i) => {
+      const vc = vis[i];
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(vc.positions, 3));
+      g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vc.positions.length).fill(0.55), 3));
+      g.setIndex(new THREE.BufferAttribute(vc.indices, 1));
+      g.computeVertexNormals();
+      g.computeBoundingSphere();
+      mesh.geometry.dispose();
+      mesh.geometry = g;
+      mesh.userData.nodeOf = vc.nodeOf; mesh.userData.pos = vc.positions;
+    });
+    this.dirty = true;
+  }
+
+  // Surrounding anatomy (CT-merge style context): great vessels, caval and pulmonary
+  // vein extensions, coronary sinus, and valve annulus rings. Translucent, not mapped.
+  _buildContext() {
+    const grp = new THREE.Group(); grp.renderOrder = 3;
+    const V = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+    const mat = (hex, op) => new THREE.MeshPhongMaterial({ color: hex, transparent: true, opacity: op, depthWrite: false, shininess: 30, side: THREE.DoubleSide });
+    const tube = (pts, r, m, closed = false) => {
+      const curve = new THREE.CatmullRomCurve3(pts.map(V), closed, 'centripetal');
+      const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 10, r, 20, closed), m);
+      mesh.renderOrder = 3; grp.add(mesh); return mesh;
+    };
+    const ring = (c, n, r, m, w = 0.9) => {
+      const mesh = new THREE.Mesh(new THREE.TorusGeometry(r, w, 8, 64), m);
+      mesh.position.copy(V(c)); mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), V(n).normalize());
+      mesh.renderOrder = 3; grp.add(mesh);
+    };
+    const art = mat(0xc4525a, 0.26), pa = mat(0x5d7fc9, 0.26), vein = mat(0x6f86b5, 0.24), cs = mat(0x9b7fd4, 0.4), valve = mat(0xe9d28c, 0.7);
+    // aorta: root at the cusps, ascending, arch, descending (left-posterior of the oesophagus)
+    tube([[8, 3, 6], [6, -2, 26], [3, 0, 48], [6, 8, 64], [18, 40, 74], [30, 66, 60], [35, 80, 30], [33, 80, -10], [30, 76, -70]], 12, art);
+    tube([[7, 12, 68], [2, 10, 96]], 5, art); tube([[16, 30, 74], [18, 32, 100]], 4, art); tube([[25, 50, 72], [31, 54, 98]], 4.5, art);
+    // pulmonary trunk and branches (RPA runs behind the ascending aorta and SVC)
+    tube([[8, -28, 18], [14, -24, 34], [18, -14, 47]], 12, pa);
+    tube([[18, -14, 47], [34, 0, 54], [52, 20, 50]], 8.5, pa);
+    tube([[18, -14, 47], [6, 10, 52], [-8, 28, 50], [-24, 40, 46], [-38, 44, 42]], 8, pa);
+    // caval veins beyond the RA shell openings
+    tube([[-25, 22, 46], [-25, 21, 70], [-23, 19, 98]], 10, vein);
+    tube([[-22, 30, -50], [-20, 33, -80], [-16, 36, -112]], 12, vein);
+    // pulmonary vein extensions
+    for (const d of Object.values(PV_DEFS)) {
+      const ab = [d.b[0] - d.a[0], d.b[1] - d.a[1], d.b[2] - d.a[2]], l = Math.hypot(...ab);
+      const u = ab.map((x) => x / l);
+      tube([d.b.map((x, i) => x - u[i] * 4), d.b.map((x, i) => x + u[i] * 14), d.b.map((x, i) => x + u[i] * 26)], d.r - 1, vein);
+    }
+    // coronary sinus / great cardiac vein in the AV groove
+    tube([LR.CS_OS, LR.CS_9_10, LR.CS_7_8, LR.CS_5_6, LR.CS_3_4, LR.CS_1_2, [49, 4, 0], [44, -10, 6]], 3.6, cs);
+    // valve annuli
+    ring(LR.TV_CENTER, TV_N, 17, valve);
+    ring(LR.MV_CENTER, MV_N, 16, valve);
+    ring([9, 2, 6], [-0.45, 0.2, 0.87], 11, valve, 0.7);
+    ring([8, -28, 17], [0.3, 0.1, 1], 11.5, valve, 0.7);
+    if (this.context) { this.root.remove(this.context); this.context.traverse((o) => o.geometry?.dispose?.()); }
+    this.context = grp; grp.visible = this.show.context; this.root.add(grp);
   }
 
   updatePoints() {
@@ -255,33 +338,46 @@ export class Viewport3D {
       const pts = c.placed ? c.shaft() : [];
       let o = this.cathObjs[id];
       if (!o) {
-        o = this.cathObjs[id] = { tube: null, poles: new THREE.InstancedMesh(new THREE.CylinderGeometry(1.25, 1.25, 1.4, 12), new THREE.MeshPhongMaterial({ color: 0xdddddd, shininess: 80 }), 10), key: '' };
-        o.color = new THREE.Color(css(c.info.color));
-        o.poles.frustumCulled = false;
-        this.cathGroup.add(o.poles);
+        o = this.cathObjs[id] = { group: new THREE.Group(), key: '' };
+        o.shaftMat = new THREE.MeshPhongMaterial({ color: new THREE.Color(css(c.info.color)), shininess: 45 });
+        o.elecMat = new THREE.MeshPhongMaterial({ color: 0xe4e8ee, specular: 0xffffff, shininess: 140 }); // platinum-iridium
+        this.cathGroup.add(o.group);
       }
-      const key = pts.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';');
+      const poles = c.placed ? c.poles : [];
+      const key = pts.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';') + '|' + poles.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';');
       if (key === o.key) continue;
       o.key = key;
-      if (o.tube) { this.cathGroup.remove(o.tube); o.tube.geometry.dispose(); o.tube = null; }
-      if (pts.length >= 2) {
-        const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p[0], p[1], p[2])));
-        const geo = new THREE.TubeGeometry(curve, Math.max(16, pts.length * 6), id === 'ABL' ? 1.15 : 0.9, 8, false);
-        o.tube = new THREE.Mesh(geo, new THREE.MeshPhongMaterial({ color: o.color, shininess: 40 }));
-        this.cathGroup.add(o.tube);
-      }
-      const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-      const poles = c.placed ? c.poles : [];
+      for (const ch of [...o.group.children]) { o.group.remove(ch); ch.geometry.dispose(); }
+      if (pts.length < 2) continue;
+      const abl = id === 'ABL';
+      const R = abl ? 1.17 : id === 'CS' ? 0.9 : 1.0; // 7 Fr ablation, 6 Fr diagnostic
+      const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p[0], p[1], p[2])), false, 'centripetal');
+      const L = curve.getLength();
+      o.group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(24, Math.round(L / 1.5)), R, 12, false), o.shaftMat));
+      // electrodes: short tubes cut from the shaft curve itself, so every band bends with the shaft
+      const NS = Math.max(120, Math.round(L * 3));
+      const samp = []; for (let i = 0; i <= NS; i++) samp.push(curve.getPointAt(i / NS));
+      const uOf = (p) => { const v = new THREE.Vector3(p[0], p[1], p[2]); let bi = 0, bd = Infinity; for (let i = 0; i <= NS; i++) { const d = samp[i].distanceToSquared(v); if (d < bd) { bd = d; bi = i; } } return bi / NS; };
+      const tipEndU = poles.length && uOf(poles[0]) > 0.5 ? 1 : 0;
+      const band = (u0, u1) => {
+        u0 = Math.max(0, Math.min(1, u0)); u1 = Math.max(0, Math.min(1, u1));
+        if (u1 - u0 < 1e-5) return;
+        const m = 6, sp = []; for (let j = 0; j <= m; j++) sp.push(curve.getPointAt(u0 + ((u1 - u0) * j) / m));
+        const sub = new THREE.CatmullRomCurve3(sp, false, 'centripetal');
+        o.group.add(new THREE.Mesh(new THREE.TubeGeometry(sub, 10, R * 1.07, 12, false), o.elecMat));
+      };
       for (let i = 0; i < poles.length; i++) {
-        const p = new THREE.Vector3(...poles[i]);
-        const nb = new THREE.Vector3(...(poles[i + 1] || poles[i - 1] || poles[i]));
-        const dir = nb.clone().sub(p); if (i === poles.length - 1 && i > 0) dir.negate();
-        if (dir.lengthSq() < 1e-6) dir.set(0, 1, 0);
-        q.setFromUnitVectors(up, dir.normalize());
-        const sc = id === 'ABL' && i === 0 ? new THREE.Vector3(1.05, 2.6, 1.05) : new THREE.Vector3(1, 1, 1);
-        M.compose(p, q, sc); o.poles.setMatrixAt(i, M);
+        if (i === 0) {
+          // distal tip electrode (3.5 mm ablation tip, 2 mm diagnostic) with a rounded cap
+          const tl = (abl ? 3.5 : 2) / L;
+          if (tipEndU === 1) band(1 - tl, 1); else band(0, tl);
+          const cap = new THREE.Mesh(new THREE.SphereGeometry(R * 1.07, 14, 10), o.elecMat);
+          cap.position.copy(curve.getPointAt(tipEndU)); o.group.add(cap);
+        } else {
+          const u = uOf(poles[i]), hw = 0.55 / L; // 1.1 mm ring electrodes
+          band(u - hw, u + hw);
+        }
       }
-      o.poles.count = poles.length; o.poles.instanceMatrix.needsUpdate = true;
     }
     // contact-force arrow on the ablation tip
     const abl = cats.ABL;
@@ -315,15 +411,16 @@ export class Viewport3D {
     const hits = this.raycaster.intersectObjects(this.meshes.filter((m) => m.visible && m.material.opacity > 0.5), false);
     if (!hits.length) return null;
     const h = hits[0];
-    const c = h.object.userData.chamber;
+    const c = h.object.userData.chamber, P = h.object.userData.pos, nodeOf = h.object.userData.nodeOf;
     const local = this.root.worldToLocal(h.point.clone());
     const face = h.face;
     let best = -1, bd = Infinity;
     for (const vi of [face.a, face.b, face.c]) {
-      const dx = c.positions[3 * vi] - local.x, dy = c.positions[3 * vi + 1] - local.y, dz = c.positions[3 * vi + 2] - local.z;
+      const dx = P[3 * vi] - local.x, dy = P[3 * vi + 1] - local.y, dz = P[3 * vi + 2] - local.z;
       const d = dx * dx + dy * dy + dz * dz; if (d < bd) { bd = d; best = vi; }
     }
-    return { node: c.offset + best, pos: [local.x, local.y, local.z], chamber: c.id };
+    const node = nodeOf ? nodeOf[best] : c.offset + best;
+    return { node, pos: [local.x, local.y, local.z], chamber: c.id };
   }
   pickPoint(clientX, clientY) {
     if (!this.ptMesh.count) return null;
