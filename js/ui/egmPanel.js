@@ -14,6 +14,8 @@ const COLOR = { I: '--c-egm-surface', II: '--c-egm-surface', aVF: '--c-egm-surfa
 const GUTTER = 74;
 const SCROLL_H = 9; // scroll bar strip at the bottom of the canvas
 const KEEP = RING - 500; // ms of history that is safe to display
+const SNAP_MS = 10000; // length of a snapshot strip
+const MAX_SNAPS = 20;
 
 export class EGMPanel {
   constructor(canvas) {
@@ -22,6 +24,9 @@ export class EGMPanel {
     this.cal = []; // caliper times (ms)
     this.drag = null; this.pan = null; this.thumbDrag = null;
     this.onFreezeChange = null; // set by the app so the toolbar reflects scroll-freeze
+    // Snapshots: copies of all channels over a 10 s strip, kept after the live buffer has
+    // moved on, for later measurement with the calipers. viewSnap = the one on screen.
+    this.snaps = []; this.viewSnap = null; this.onSnapsChange = null;
     this.colors = {};
     this.refreshColors();
     new ResizeObserver(() => this.resize()).observe(canvas);
@@ -41,7 +46,45 @@ export class EGMPanel {
     this.bg = cs.getPropertyValue('--c-bg-viewport').trim();
     this.pace = cs.getPropertyValue('--c-pace').trim();
   }
-  setSim(sim) { this.sim = sim; this.cal = []; this.frozen = false; this._report(); this.onFreezeChange?.(false); }
+  setSim(sim) { this.sim = sim; this.cal = []; this.frozen = false; this.snaps = []; this.viewSnap = null; this._report(); this.onFreezeChange?.(false); this.onSnapsChange?.(); }
+
+  // ---------------------------------------------------------------- snapshots
+  // Capture the strip ending at the moment on screen (live: now; frozen: the reviewed time).
+  snap() {
+    const sim = this.sim; if (!sim) return null;
+    const egm = sim.egm, fin = egm.finT - 1;
+    const src = this.viewSnap;
+    const t1 = src ? this.freezeT : this.frozen ? this.freezeT : fin;
+    const t0 = Math.max(src ? src.t0 : fin - KEEP, t1 - SNAP_MS);
+    const n = Math.max(1, Math.round(t1 - t0));
+    const chs = this.channels().map((id) => {
+      const ch = src ? src.chs.find((c) => c.id === id) : egm.byId[id];
+      const data = new Float32Array(n);
+      for (let i = 0; i < n; i++) data[i] = this._sample(id, t0 + i);
+      return { id, label: src ? ch.label : (ch.group === 'ABL' ? ch.label : LABEL[id]) || id, kind: ch.kind, data };
+    });
+    const k = (this.snaps.length ? this.snaps[this.snaps.length - 1].num : 0) + 1;
+    const s = { num: k, t0, t1: t0 + n, simT: sim.t, rhythm: sim.status.rhythm, chs };
+    this.snaps.push(s);
+    while (this.snaps.length > MAX_SNAPS) this.snaps.shift();
+    this.showSnap(s);
+    this.onSnapsChange?.();
+    return s;
+  }
+  snapLabel(s) { const m = Math.floor(s.simT / 60000), sec = Math.floor((s.simT % 60000) / 1000); return `Snap ${s.num} · ${m}:${String(sec).padStart(2, '0')} · ${s.rhythm}`; }
+  showSnap(s) {
+    if (!s) return;
+    this.viewSnap = s; this.cal = [];
+    if (!this.frozen) { this.frozen = true; this.onFreezeChange?.(true); }
+    this.freezeT = s.t1; this._clampView(); this._report(); this.onSnapsChange?.();
+  }
+  _sample(id, t) {
+    const s = this.viewSnap;
+    if (!s) return this.sim.egm.sample(id, t);
+    const c = s.chs.find((x) => x.id === id); if (!c) return 0;
+    const i = Math.round(t - s.t0);
+    return i >= 0 && i < c.data.length ? c.data[i] : 0;
+  }
   resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
@@ -56,7 +99,7 @@ export class EGMPanel {
     if (!this.sim) return;
     if (f === this.frozen) return;
     this.frozen = f;
-    if (f) this.freezeT = this.sim.egm.finT - 1; else this.cal = [];
+    if (f) this.freezeT = this.sim.egm.finT - 1; else { this.cal = []; if (this.viewSnap) { this.viewSnap = null; this.onSnapsChange?.(); } }
     this._report();
     this.onFreezeChange?.(f);
   }
@@ -65,8 +108,9 @@ export class EGMPanel {
   plotW() { return this.W - GUTTER; }
   _range() {
     // [earliest, latest] valid right-edge times for the frozen strip
-    const fin = this.sim.egm.finT - 1;
     const span = this.plotW() * this.msPerPx();
+    if (this.viewSnap) { const s = this.viewSnap; return [Math.min(s.t0 + span, s.t1), s.t1]; }
+    const fin = this.sim.egm.finT - 1;
     const lo = Math.max(span, fin - KEEP + span);
     return [Math.min(lo, fin), fin];
   }
@@ -84,7 +128,7 @@ export class EGMPanel {
   }
   scrollPage(dir) { this.scrollBy(dir * this.plotW() * this.msPerPx() * 0.8); }
   goLive() { this.setFrozen(false); }
-  behindMs() { return this.frozen && this.sim ? Math.max(0, this.sim.egm.finT - 1 - this.freezeT) : 0; }
+  behindMs() { return this.frozen && this.sim && !this.viewSnap ? Math.max(0, this.sim.egm.finT - 1 - this.freezeT) : 0; }
 
   _wheel(e) {
     if (!this.sim) return;
@@ -107,9 +151,10 @@ export class EGMPanel {
 
   _thumb() {
     // scroll-bar geometry: track covers the stored history, thumb = visible window
-    const fin = this.sim.egm.finT - 1, plotW = this.plotW();
+    const s = this.viewSnap;
+    const fin = s ? s.t1 : this.sim.egm.finT - 1, plotW = this.plotW();
     const span = plotW * this.msPerPx();
-    const t0 = Math.max(0, fin - KEEP), total = Math.max(span, fin - t0);
+    const t0 = s ? s.t0 : Math.max(0, fin - KEEP), total = Math.max(span, fin - t0);
     const right = this.frozen ? this.freezeT : fin;
     const x0 = GUTTER + ((right - span - t0) / total) * plotW, x1 = GUTTER + ((right - t0) / total) * plotW;
     return { x0: Math.max(GUTTER, x0), x1: Math.min(this.W, Math.max(x0 + 14, x1)), t0, total };
@@ -173,11 +218,13 @@ export class EGMPanel {
     const d = this.caliperMs();
     const back = this.behindMs();
     const rev = back > 50 ? ` · review −${(back / 1000).toFixed(1)} s` : '';
-    el.textContent = d != null ? `Δ ${d} ms${d > 200 ? ` ≈ ${Math.round(60000 / d)} bpm` : ''}${rev}` : this.frozen ? `Frozen${rev} · scroll/drag to review` : '';
+    const sn = this.viewSnap ? ` · Snap ${this.viewSnap.num}` : '';
+    el.textContent = d != null ? `Δ ${d} ms${d > 200 ? ` ≈ ${Math.round(60000 / d)} bpm` : ''}${rev}${sn}` : this.viewSnap ? `Snap ${this.viewSnap.num} · drag the calipers to measure` : this.frozen ? `Frozen${rev} · scroll/drag to review` : '';
   }
 
   channels() {
     const sim = this.sim; if (!sim) return [];
+    if (this.viewSnap) return this.viewSnap.chs.map((c) => c.id);
     return ORDER.filter((id) => sim.egm.byId[id] && !sim.egm.byId[id].hidden && (id !== 'PV' || sim.cfg.mechanism === 'af'));
   }
 
@@ -210,8 +257,9 @@ export class EGMPanel {
     for (let r = 0; r < n; r++) {
       const id = chs[r], y0 = r * rowH + rowH / 2;
       ctx.fillStyle = this.colors[id] || '#ccc';
-      const ch = egm.byId[id];
-      ctx.fillText((ch.group === 'ABL' ? ch.label : LABEL[id]) || id, 6, y0);
+      const sc = this.viewSnap?.chs.find((c) => c.id === id);
+      const ch = sc || egm.byId[id];
+      ctx.fillText(sc ? sc.label : (ch.group === 'ABL' ? ch.label : LABEL[id]) || id, 6, y0);
       const surf = ch.kind === 'surface';
       const g = rowH * 0.42 * this.gain * (ch.gain || 1);
       const clip = surf ? 2.2 : 1.6; // amplifier clipping like a recording system
@@ -227,10 +275,10 @@ export class EGMPanel {
           if (back > plotW - 8) { pen = false; continue; } // erase gap
           t = tEnd - back * mpp;
         }
-        if (t < 0 || fin - t > KEEP) { pen = false; continue; }
+        if (t < 0 || (this.viewSnap ? t < this.viewSnap.t0 || t >= this.viewSnap.t1 : fin - t > KEEP)) { pen = false; continue; }
         // min/max over the samples in this pixel for spikes
         let lo = Infinity, hi = -Infinity;
-        for (let k = 0; k < Math.max(1, mpp); k++) { const v = egm.sample(id, t - k); if (v < lo) lo = v; if (v > hi) hi = v; }
+        for (let k = 0; k < Math.max(1, mpp); k++) { const v = this._sample(id, t - k); if (v < lo) lo = v; if (v > hi) hi = v; }
         const yA = y0 - Math.max(-clip, Math.min(clip, hi)) * g, yB = y0 - Math.max(-clip, Math.min(clip, lo)) * g;
         const x = GUTTER + px + 0.5;
         if (!pen) { ctx.moveTo(x, yA); pen = true; } else ctx.lineTo(x, yA);
@@ -238,7 +286,8 @@ export class EGMPanel {
       }
       ctx.stroke();
       // thin separator between surface ECG and intracardiac groups
-      if (surf && r + 1 < n && egm.byId[chs[r + 1]].kind !== 'surface') { ctx.fillStyle = this.gridMaj; ctx.fillRect(GUTTER, (r + 1) * rowH, plotW, 1); }
+      const nx = r + 1 < n ? (this.viewSnap?.chs.find((c) => c.id === chs[r + 1]) || egm.byId[chs[r + 1]]) : null;
+      if (surf && nx && nx.kind !== 'surface') { ctx.fillStyle = this.gridMaj; ctx.fillRect(GUTTER, (r + 1) * rowH, plotW, 1); }
     }
     // sweep bar
     if (!this.frozen) { ctx.fillStyle = this.annot; ctx.fillRect(GUTTER + colEnd + 1, 0, 1, HP); }
@@ -260,7 +309,7 @@ export class EGMPanel {
     if (this.frozen) {
       ctx.fillStyle = this.annot;
       const back = this.behindMs();
-      ctx.fillText(back > 50 ? `−${(back / 1000).toFixed(1)} s` : 'FROZEN', 6, H - SCROLL_H / 2 - 1);
+      ctx.fillText(this.viewSnap ? `SNAP ${this.viewSnap.num}` : back > 50 ? `−${(back / 1000).toFixed(1)} s` : 'FROZEN', 6, H - SCROLL_H / 2 - 1);
     }
   }
 }

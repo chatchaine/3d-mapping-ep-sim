@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CHAMBER_IDS, CHAMBER_INDEX, LANDMARKS_RAW as LR, PV_DEFS, TV_N, MV_N, LV_AXIS, LV_BASE, RV_SIDE, buildVisualHeart } from '../engine/geometry.js';
+import { CHAMBER_IDS, CHAMBER_INDEX, LANDMARKS_RAW as LR, PV_DEFS, TV_N, MV_N, buildVisualHeart } from '../engine/geometry.js';
 
 let visualCache = null; // display meshes are built once per session (same anatomy for every case)
 
@@ -63,7 +63,7 @@ export class Viewport3D {
     const rim = new THREE.DirectionalLight(0xffe2d0, 0.5); this.camera.add(rim); rim.position.set(0, 40, -80);
     this.scene.add(this.camera);
     this.root = new THREE.Group(); this.root.rotation.x = -Math.PI / 2; this.scene.add(this.root);
-    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: false, beat: true };
+    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: false, beat: false };
     this.ghost = null; this.labels = [];
     this.raycaster = new THREE.Raycaster();
     this.tween = null;
@@ -105,7 +105,6 @@ export class Viewport3D {
     }
     this.nodeCol = new Float32Array(heart.count * 3);
     this._initBeat();
-    this._buildModerator();
     this._buildContext();
     // swap in the finer display shells (built once, off the first frame)
     const swap = () => { if (this.sim === sim) this._useVisual(visualCache); };
@@ -486,44 +485,6 @@ export class Viewport3D {
     }
   }
 
-  // RV moderator band (septomarginal trabeculation): a muscular bundle crossing the RV
-  // cavity from the mid-septum to the base of the anterior papillary muscle. Display only.
-  _buildModerator() {
-    const heart = this.sim.heart, RV = CHAMBER_INDEX.RV;
-    const q = LV_BASE.map((b, i) => b + LV_AXIS[i] * 52 + RV_SIDE[i] * 24);
-    const sep = heart.grid.nearest(q, 30, (i) => heart.chamber[i] === RV);
-    if (sep < 0) { this.moderator = null; return; }
-    const ps = [heart.pos[3 * sep], heart.pos[3 * sep + 1], heart.pos[3 * sep + 2]];
-    // free-wall attachment: the RV wall point across the cavity, a little toward the apex
-    const dir = RV_SIDE.map((v, i) => v + LV_AXIS[i] * 0.35);
-    let fw = -1, best = -Infinity;
-    heart.grid.query(ps, 32, (i, d) => {
-      if (heart.chamber[i] !== RV || d < 9) return;
-      const v = [heart.pos[3 * i] - ps[0], heart.pos[3 * i + 1] - ps[1], heart.pos[3 * i + 2] - ps[2]];
-      const al = (v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]) / d;
-      if (al > best) { best = al; fw = i; }
-    });
-    if (fw < 0 || best < 0.75) { this.moderator = null; return; }
-    this.moderator = { a: sep, b: fw, mat: new THREE.MeshPhongMaterial({ color: new THREE.Color(css('--c-shell-nomap')), shininess: 20 }), mesh: null, key: '' };
-    this._updateModerator();
-  }
-  _updateModerator() {
-    const m = this.moderator; if (!m) return;
-    const P = this.sim.heart.pos, oa = this._off(m.a), ob = this._off(m.b);
-    const a = new THREE.Vector3(P[3 * m.a] + oa[0], P[3 * m.a + 1] + oa[1], P[3 * m.a + 2] + oa[2]);
-    const b = new THREE.Vector3(P[3 * m.b] + ob[0], P[3 * m.b + 1] + ob[1], P[3 * m.b + 2] + ob[2]);
-    const key = a.toArray().concat(b.toArray()).map((v) => v.toFixed(2)).join(',');
-    if (key !== m.key) {
-      m.key = key;
-      // slightly bowed toward the apex, thicker at both insertions
-      const mid = a.clone().add(b).multiplyScalar(0.5).add(new THREE.Vector3(...LV_AXIS).multiplyScalar(2.5));
-      const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
-      const geo = new THREE.TubeGeometry(curve, 16, 1.7, 10, false);
-      if (m.mesh) { m.mesh.geometry.dispose(); m.mesh.geometry = geo; } else { m.mesh = new THREE.Mesh(geo, m.mat); this.root.add(m.mesh); }
-    }
-    const rv = this.meshes[CHAMBER_INDEX.RV];
-    m.mesh.visible = rv.visible && rv.material.opacity > 0.2;
-  }
   _off(n) {
     const D = this.nodeDisp;
     if (!D || n == null || n < 0 || n >= this.beatState.length) return ZERO3;
@@ -625,9 +586,6 @@ export class Viewport3D {
       if (this.show.beat || this.beatWasOn) {
         this._beat();
         this.updatePoints(); this.updateTags();
-      }
-      if (this.moderator) {
-        this._updateModerator();
       }
       this.updateCatheters();
       if (this.ghost) { const s = 1 + 0.15 * Math.sin(now / 250); this.ghost.children.forEach((m) => m.scale.setScalar(s)); }

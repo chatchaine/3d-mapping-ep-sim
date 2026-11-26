@@ -220,6 +220,20 @@ export function buildScenario(heart, cfgIn) {
     sys.ap = { aNode, vNode, pos: mid, depth: ap.depth || 3 };
   }
 
+  // ---- slow-pathway "low-voltage bridge" (voltage-gradient mapping of Koch's triangle):
+  // a narrow band of lower bipolar voltage runs from the anterior CS os lip toward the
+  // tricuspid annulus over the slow-pathway region. Voltage only; conduction is unchanged.
+  {
+    // anchored on the wall: from the slow-pathway node toward the annulus
+    const u = norm(sub(LR.TV_CENTER, LR.SP_ENTRY));
+    const a = P(eng, pick(sub(LR.SP_ENTRY, scl(u, 2)), 'RA')), b = P(eng, pick(add(LR.SP_ENTRY, scl(u, 12)), 'RA'));
+    const ab = sub(b, a), L2 = Math.max(1, dot(ab, ab));
+    forChamber(RA, (n) => {
+      const p = P(eng, n), tt = Math.max(0, Math.min(1, dot(sub(p, a), ab) / L2));
+      if (len(sub(p, add(a, scl(ab, tt)))) < 4.5) eng.bip[n] = Math.min(eng.bip[n], 0.2 + 0.15 * hash01(n * 7 + 3));
+    });
+  }
+
   // ---- substrates
   if (cfg.priorBox) applyPriorBox(eng, heart, sys);
   if (cfg.scarVT) applyScarVT(eng, heart, sys, cfg.scarVT);

@@ -16,6 +16,7 @@ export const KEYMAP = [
   { keys: 'Shift+F', action: 'freeze', label: 'Freeze EGM' },
   { keys: '← / →', action: null, label: 'Scroll EGM back / forward (Shift = 2 s); wheel or drag the strip also scrolls' },
   { keys: 'End', action: null, label: 'EGM back to live sweep' },
+  { keys: 'N', action: null, label: 'Snap: save the EGM at this moment and measure it with calipers' },
   { keys: 'T', action: 'tag', label: 'Tag His at the ablation tip' },
   { keys: 'Backspace', action: 'undoPoint', label: 'Delete last point' },
   { keys: 'V', action: 'cycleMap', label: 'Cycle map type' },

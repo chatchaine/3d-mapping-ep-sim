@@ -218,7 +218,7 @@ export const CASES = [
     maneuvers: ['entrain_cti', 'entrain_cs'],
     diagnosis: { options: ['CTI-dependent counter-clockwise typical flutter', 'Clockwise typical flutter', 'Perimitral flutter', 'Focal AT with 2:1'], correct: 0, explain: 'CS proximal → distal, negative inferior F waves and concealed entrainment from the CTI with PPI–TCL ≤ 20 ms.' },
     target: { kind: 'cti', radius: 0, label: 'Line across the CTI from the TA (6–7 o\'clock LAO) to the IVC' },
-    map: { group: 'A', ref: 'CS910', woi: [-150, 70], chamber: 'RA', min: 60 },
+    map: { group: 'A', ref: 'CS910', woi: [-37, 183], chamber: 'RA', min: 60 }, // WOI anchored so early meets late at the CTI
     rfBenchmark: 15, fluoroBenchmark: 5, rfPower: 40,
     endpoints: [
       { id: 'terminated_rf', label: 'Flutter terminated during RF (not sufficient alone)' },
@@ -250,7 +250,7 @@ export const CASES = [
     maneuvers: ['entrain_cti', 'entrain_cs'],
     diagnosis: { options: ['Perimitral flutter (clockwise), mitral isthmus dependent', 'Roof-dependent flutter', 'Focal AT from a PV gap', 'Typical CTI flutter'], correct: 0, explain: 'CTI PPI–TCL long; proximal and distal CS PPI–TCL ≤ 20; activation around the MA ≈ 95% TCL.' },
     target: { kind: 'mi', radius: 0, label: 'Mitral isthmus line: lateral MA (~4 o\'clock) to the LIPV antral lesion set' },
-    map: { group: 'A', ref: 'CS910', woi: [-170, 70], chamber: 'LA', min: 120 },
+    map: { group: 'A', ref: 'CS910', woi: [-155, 85], chamber: 'LA', min: 120 }, // early meets late at the mitral isthmus
     rfBenchmark: 25, fluoroBenchmark: 10, rfPower: 40, leftSided: true,
     endpoints: [
       { id: 'terminated_rf', label: 'AT terminates during the mitral isthmus line' },
@@ -283,7 +283,7 @@ export const CASES = [
     maneuvers: ['entrain_isthmus', 'pace_map'],
     diagnosis: { options: ['Scar-related reentrant VT, inferior LV isthmus', 'Bundle branch reentry', 'Focal Purkinje VT', 'Epicardial VT'], correct: 0, explain: 'Monomorphic RBBB/superior-axis VT in a post-MI scar with mid-diastolic potentials and concealed entrainment with PPI–TCL ≤ 30 ms.' },
     target: { kind: 'vt', radius: 8, label: 'Central isthmus (channel between scar and mitral annulus)' },
-    map: { group: 'V', ref: 'QRS', woi: [-300, 100], chamber: 'LV', min: 150 },
+    map: { group: 'V', ref: 'QRS', woi: [-163, 237], chamber: 'LV', min: 150 }, // window opens at the isthmus entrance
     rfBenchmark: 40, fluoroBenchmark: 15, rfPower: 45,
     endpoints: [
       { id: 'terminated_rf', label: 'VT terminates during RF at the isthmus' },
@@ -315,7 +315,7 @@ export const CASES = [
     maneuvers: ['pace_map'],
     diagnosis: { options: ['Idiopathic RVOT PVC/VT (posteroseptal RVOT)', 'Aortic cusp (RCC/LCC) PVC', 'ARVC', 'LV summit PVC'], correct: 0, explain: 'LBBB inferior axis, transition V4, normal MRI and earliest RVOT activation with QS.' },
     target: { kind: 'focus', radius: 5, label: 'Posteroseptal RVOT ~1.5 cm below the pulmonary valve' },
-    map: { group: 'V', ref: 'QRS', woi: [-120, 60], chamber: 'RV', min: 40 },
+    map: { group: 'V', ref: 'QRS', woi: [-120, 60], chamber: 'RV', min: 40, template: 'pvc' },
     rfBenchmark: 6, fluoroBenchmark: 5, rfPower: 35,
     endpoints: [
       { id: 'no_pvc_iso', label: 'No spontaneous or iso-inducible PVCs (observation on iso)' },

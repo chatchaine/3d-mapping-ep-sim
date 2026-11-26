@@ -45,14 +45,13 @@ class App {
     const list = CASES.filter((c) => (this.filter.tag === 'All' || c.tag === this.filter.tag) && (!q || (c.title + c.tag + c.chamber).toLowerCase().includes(q)));
     $('case-grid').innerHTML = list.map((c) => `
       <button class="case-card ${best[c.id] != null ? 'is-completed' : ''}" role="listitem" data-case="${c.id}" aria-label="Case ${c.num}: ${esc(c.title)}, ${LEVELS[c.level]}">
-        <div class="case-card__thumb">${thumbSVG(c.chamber)}</div>
-        <div class="case-card__title">${c.num}. ${esc(c.title)}</div>
+        <div class="case-card__head"><span class="case-card__num" aria-hidden="true">${c.num}</span><span class="case-card__title">${esc(c.title)}</span></div>
         <div class="case-card__meta"><span class="badge badge--difficulty" data-level="${c.level}"><span class="badge__pips" aria-hidden="true">${'●'.repeat(c.level)}${'○'.repeat(3 - c.level)}</span>${LEVELS[c.level]}</span>
           <span class="tag-chip">${c.chamber}</span><span class="tag-chip">${c.tag}</span><span>~${c.mins} min</span>${c.mandatory ? '<span class="tag-chip">mandatory</span>' : ''}</div>
         <div class="case-card__best">${best[c.id] != null ? `✔ Best score ${best[c.id]}/100` : 'Not completed'}</div>
       </button>`).join('') + `
       <button class="case-card" role="listitem" data-sandbox="1" aria-label="Sandbox mode">
-        <div class="case-card__thumb">${thumbSVG('RA')}</div><div class="case-card__title">Sandbox</div>
+        <div class="case-card__head"><span class="case-card__num" aria-hidden="true">∞</span><span class="case-card__title">Sandbox</span></div>
         <div class="case-card__meta"><span class="badge badge--difficulty" data-level="0">Free play</span><span>no score</span></div>
         <div class="case-card__best">Choose rhythm and chamber; everything unlocked</div></button>`;
     $('case-grid').querySelectorAll('[data-case]').forEach((b) => b.addEventListener('click', () => this.startCase(CASES.find((c) => c.id === b.dataset.case))));
@@ -377,6 +376,12 @@ class App {
     $('egm-cal').addEventListener('click', () => this.toggleCalipers());
     $('egm-freeze').addEventListener('click', () => this.toggleFreeze());
     $('egm-live').addEventListener('click', () => { this.egm.goLive(); this.syncFreeze(); });
+    $('egm-snap').addEventListener('click', () => this.snapEGM());
+    $('egm-snaps').addEventListener('change', (e) => {
+      const s = this.egm.snaps.find((x) => String(x.num) === e.target.value);
+      if (s) { this.egm.showSnap(s); if (!this.egm.calipers) this.toggleCalipers(); this.syncFreeze(); } else { this.egm.goLive(); this.syncFreeze(); }
+    });
+    this.egm.onSnapsChange = () => this.syncSnaps();
     $('egm-back').addEventListener('click', () => this.egm.scrollPage(-1));
     $('egm-fwd').addEventListener('click', () => this.egm.scrollPage(1));
     this.egm.onFreezeChange = () => this.syncFreeze();
@@ -428,6 +433,18 @@ class App {
 
   setSweep(s) { this.egm.setSpeed(s); document.querySelectorAll('#sweep-seg .segmented__option').forEach((b) => b.setAttribute('aria-checked', String(Number(b.dataset.speed) === s))); }
   toggleCalipers() { this.egm.calipers = !this.egm.calipers; $('egm-cal').setAttribute('aria-pressed', String(this.egm.calipers)); $('egm-canvas').classList.toggle('is-calipers', this.egm.calipers); if (this.egm.calipers && !this.egm.frozen) this.toggleFreeze(); }
+  snapEGM() {
+    const s = this.egm.snap(); if (!s) return;
+    if (!this.egm.calipers) this.toggleCalipers();
+    this.syncFreeze();
+    toast('info', `${this.egm.snapLabel(s)} saved: drag on the strip to place calipers`);
+  }
+  syncSnaps() {
+    const sel = $('egm-snaps'), e = this.egm;
+    sel.hidden = !e.snaps.length;
+    sel.innerHTML = `<option value="">Live / review</option>` + e.snaps.slice().reverse().map((s) => `<option value="${s.num}">${esc(e.snapLabel(s))}</option>`).join('');
+    sel.value = e.viewSnap ? String(e.viewSnap.num) : '';
+  }
   toggleFreeze() { this.egm.setFrozen(!this.egm.frozen); this.syncFreeze(); }
   syncFreeze() { const f = this.egm.frozen; $('egm-freeze').setAttribute('aria-pressed', String(f)); $('egm-live').hidden = !f; document.querySelector('.egm').classList.toggle('is-frozen', f); }
   cycleOpacity() { this.vp.opacityMode = (this.vp.opacityMode + 1) % 3; this.vp.updateVisibility(); $('tg-opacity').setAttribute('aria-pressed', String(this.vp.opacityMode > 0)); }
@@ -451,6 +468,7 @@ class App {
       case 'a': this.toggleRF(); break;
       case 'p': this.togglePace(); break;
       case 'c': this.toggleCalipers(); break;
+      case 'n': this.snapEGM(); break;
       case 'f': if (e.shiftKey) this.toggleFreeze(); break;
       case 't': this.tagHis(); break;
       case 'backspace': case 'delete': e.preventDefault(); this.sim.mapping.deleteLast(); break;
@@ -539,16 +557,6 @@ function formatMeasure(d) {
   if (d.response) parts.push(`response ${d.response}`);
   if (d.sa != null) parts.push(`SA ${d.sa} ms`);
   return parts.join(' · ');
-}
-
-function thumbSVG(ch) {
-  const shapes = {
-    RA: '<ellipse cx="40" cy="34" rx="22" ry="20"/><rect x="34" y="4" width="10" height="12" rx="4"/><rect x="34" y="52" width="10" height="10" rx="4"/>',
-    LA: '<ellipse cx="44" cy="34" rx="22" ry="17"/><rect x="14" y="16" width="12" height="7" rx="3"/><rect x="14" y="40" width="12" height="7" rx="3"/><rect x="62" y="16" width="12" height="7" rx="3"/><rect x="62" y="40" width="12" height="7" rx="3"/>',
-    RV: '<path d="M14 12 Q40 4 64 18 Q58 50 40 62 Q22 46 14 12Z"/>',
-    LV: '<path d="M20 10 Q60 6 62 26 Q58 52 40 64 Q18 40 20 10Z"/>',
-  };
-  return `<svg viewBox="0 0 80 66" aria-hidden="true"><g fill="none" stroke="var(--c-accent)" stroke-width="2">${shapes[ch] || shapes.RA}</g></svg>`;
 }
 
 const app = new App();

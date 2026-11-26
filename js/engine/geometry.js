@@ -138,20 +138,24 @@ function lvPrims() {
 // lies between the septum (LV + `inner`) and a free wall whose distance from the LV
 // is largest facing the RV and tapers to zero at the crescent edges and toward the apex.
 const RV_SIDE = norm([-0.8, -0.55, 0.12]);
-const RV_WRAP = { inner: 3.5, thick: 15, c0: 0.35, apexS: 76 };
+const RV_WRAP = { inner: 3.5, thick: 15, c0: 0.35, apexS: 86 };
 function rvCrescentSDF(e, x, y, z) {
   const d = [x - LV_BASE[0], y - LV_BASE[1], z - LV_BASE[2]];
   const sAx = dot(d, LV_AXIS);
   const r = sub(d, scl(LV_AXIS, sAx));
   const rl = len(r) || 1;
   const cosT = dot(r, RV_SIDE) / rl;
-  const ang = Math.max(0, (cosT - RV_WRAP.c0) / (1 - RV_WRAP.c0));
   const along = Math.max(0, Math.min(1, sAx / RV_WRAP.apexS));
+  // toward the apex the crescent narrows around the RV side and its depth tapers, so the
+  // cavity closes into a rounded RV apex just short of (and rightward of) the LV apex
+  const c0 = RV_WRAP.c0 + 0.5 * Math.pow(along, 2.2);
+  const ang = Math.max(0, (cosT - c0) / (1 - c0));
+  const taper = Math.sqrt(Math.max(0, 1 - Math.pow(along, 2.4)));
   // cavity depth: deepest facing the RV, still ~45% at the edges so the rim is rounded
-  const outer = RV_WRAP.inner + RV_WRAP.thick * (0.45 + 0.55 * Math.pow(ang, 0.8)) * (1 - 0.35 * along);
+  const outer = RV_WRAP.inner + RV_WRAP.thick * (0.45 + 0.55 * Math.pow(ang, 0.8)) * (0.2 + 0.8 * taper);
   let c = smax(e - outer, -(e - RV_WRAP.inner), 3);
-  c = smax(c, (RV_WRAP.c0 - cosT) * rl, 7); // anterior/posterior edges of the crescent
-  c = smax(c, sAx - RV_WRAP.apexS, 10); // RV apex sits short of the LV apex
+  c = smax(c, (c0 - cosT) * rl, 7); // anterior/posterior edges of the crescent
+  c = smax(c, sAx - RV_WRAP.apexS, 6); // RV apex sits short of the LV apex
   c = smax(c, 4 - sAx, 6); // no wrap above the LV base (around the outflow / aortic root)
   return c;
 }

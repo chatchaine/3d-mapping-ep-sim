@@ -47,39 +47,42 @@ export function openModal({ title, body, size = 'md', buttons = [], dismissable 
 export function closeTop() { const m = stack[stack.length - 1]; if (m && m.dismissable) { m.close(); return true; } return false; }
 export function closeAll() { for (const m of [...stack]) m.close(); }
 
+import { ecgSVG, hasEcg, ecgExtras } from './ecg12.js';
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 export { esc };
 
-// Schematic ECG strip (SVG) for the briefing: narrow / wide / flutter / irregular.
-function ecgSVG(kind) {
-  let d = 'M0 30';
-  const W = 600;
-  for (let x = 0; x < W;) {
-    if (kind === 'flutter') { d += ` l10 6 l10 -6`; x += 20; if (x % 80 === 0) d += ' l2 -18 l3 26 l3 -8'; continue; }
-    if (kind === 'vf') { const a = 6 + 10 * Math.abs(Math.sin(x / 50)); d += ` l6 ${-a} l6 ${a}`; x += 12; continue; }
-    const cl = kind === 'tachy' ? 60 : kind === 'irregular' ? 50 + ((x * 37) % 60) : 110;
-    const wide = kind === 'wide';
-    d += ` l${cl * 0.3} 0 q4 -5 8 0 l${cl * 0.12} 0 l2 3 l${wide ? 6 : 3} -24 l${wide ? 6 : 3} 28 l2 -7 l${cl * 0.15} 0 q8 -8 16 0`;
-    x += cl * 0.57 + 34 + (wide ? 6 : 0);
-  }
-  return `<svg class="ecg-strip" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--c-egm-surface)" stroke-width="1.4"/></svg>`;
+// 12-lead ECG figure (click to enlarge)
+function ecgFig(c, which, title, bullets, index) {
+  const svg = ecgSVG(c.id, which, { index });
+  if (!svg) return '';
+  return `<section class="ecg-sec"><h3>${esc(title)}</h3>
+    <button type="button" class="ecg12-fig" data-title="${esc(c.title + ' · ' + title)}" aria-label="${esc(title)}: open the full-size ECG">${svg}</button>
+    ${bullets && bullets.length ? `<ul>${bullets.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</section>`;
 }
+document.addEventListener('click', (e) => {
+  const f = e.target.closest?.('.ecg12-fig');
+  if (!f) return;
+  openModal({ title: f.dataset.title, size: 'xl', body: `<div class="ecg12-full">${f.innerHTML}</div>`, buttons: [{ label: 'Close', primary: true }] });
+});
 
 export function briefingBody(c) {
   const p = c.patient;
-  const tachyKind = { AFL: 'flutter', 'AF-PVI': 'irregular', VT: c.id === 'vf_storm' ? 'vf' : 'wide' }[c.tag] || 'tachy';
+  const ecgs = hasEcg(c.id)
+    ? ecgFig(c, 'baseline', '12-lead ECG: baseline', c.ecg.baseline) + ecgFig(c, 'tachy', '12-lead ECG: clinical arrhythmia', c.ecg.tachy)
+      + ecgExtras(c.id).map((x, i) => ecgFig(c, 'extra', '12-lead ECG: ' + x.title, null, i)).join('')
+    : `<h3>ECG</h3><ul>${[...c.ecg.baseline, ...c.ecg.tachy].map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
   return `<div class="cols"><div>
       <h3>Patient</h3><p><b>${p.age} ${p.sex}.</b> ${esc(p.summary)}</p>
       <p class="note">History: ${esc(p.history)} · Medications: ${esc(p.meds)} · Labs: ${esc(p.labs)}</p>
-      <h3>12-lead ECG — baseline</h3>${ecgSVG(c.id === 'wpw_ps' || c.id === 'wpw_ll' ? 'wide' : 'sinus')}<ul>${c.ecg.baseline.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-      <h3>12-lead ECG — clinical arrhythmia</h3>${ecgSVG(tachyKind)}<ul>${c.ecg.tachy.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-    </div><div>
       <h3>Learning objectives</h3><ul>${c.objectives.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div><div>
       <h3>Catheters</h3><p class="note">HRA, His, CS (decapolar), RVA, and a steerable irrigated ablation catheter (${esc(c.engine.ablChamber)}).</p>
       <h3>Induction</h3><p class="note">${esc(c.induction.text)}</p>
       <h3>Scoring</h3><p class="note">100-point rubric: placement 8 · baseline 7 · induction & maneuvers 15 · diagnosis 20 · mapping 10 · RF efficiency 15 (benchmark ${c.rfBenchmark}) · time 5 · endpoints 20, minus safety deductions.</p>
       <h3>Time target</h3><p class="note">~${c.mins} min</p>
-    </div></div>`;
+    </div></div>
+    <div class="ecg-list">${ecgs}</div>`;
 }
 
 // Single-choice quiz; resolves with the chosen index after feedback.

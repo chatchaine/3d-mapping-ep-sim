@@ -27,12 +27,19 @@ export class Mapping {
     this.points = [];
     this.nextId = 1;
     this.version = 0;
-    this.qrsOnsets = [];
+    this.qrsOnsets = []; this.qrsFirst = [];
+    // PVC cases: annotate only beats that match the clinical PVC (same site of origin, as
+    // template matching on the 12-lead would), never the sinus beats in between
+    this.settings.template = cfg.template || null;
     this._lastV = -1e9;
     const eng = sim.engine;
     sim.subscribers.push((n, t) => {
       if (n >= eng.nMesh || eng.tissue[n] !== TISSUE.VENTRICLE) return;
-      if (t - this._lastV > 100) { this.qrsOnsets.push(t); if (this.qrsOnsets.length > 40) this.qrsOnsets.shift(); }
+      if (t - this._lastV > 100) {
+        // beat origin for template matching: the node that started this ventricular beat
+        this.qrsOnsets.push(t); this.qrsFirst.push(n);
+        if (this.qrsOnsets.length > 40) { this.qrsOnsets.shift(); this.qrsFirst.shift(); }
+      }
       this._lastV = t;
     });
     const N = eng.nMesh;
@@ -41,7 +48,13 @@ export class Mapping {
   }
 
   refTimes(refId) {
-    if (refId === 'QRS') return this.qrsOnsets.slice();
+    if (refId === 'QRS') {
+      const foc = this.settings.template === 'pvc' ? this.sim.sys.targets?.focus : null;
+      if (foc == null) return this.qrsOnsets.slice();
+      const eng = this.sim.engine, P = (n) => [eng.pos[3 * n], eng.pos[3 * n + 1], eng.pos[3 * n + 2]];
+      const f = P(foc);
+      return this.qrsOnsets.filter((t, i) => { const q = P(this.qrsFirst[i]); return Math.hypot(q[0] - f[0], q[1] - f[1], q[2] - f[2]) < 15; });
+    }
     const ch = this.sim.egm.byId[refId];
     if (!ch) return [];
     return (refId === 'RVA' ? ch.actsV : ch.actsA).slice();
@@ -84,6 +97,10 @@ export class Mapping {
     const refs = p.refs[s.ref] || [];
     p.lat = null; p.refT = null;
     const vRef = REF_OPTIONS.find((o) => o.id === s.ref)?.group === 'V';
+    // V-referenced map on an atrial shell (anterograde AP mapping): only annular points that
+    // record a ventricular electrogram get a LAT; plain atrial points are not annotated
+    const atrialPt = p.chamber < 2;
+    if (vRef && atrialPt && !p.histV) { p.refT = null; return; }
     const hist = vRef && p.histV ? p.histV : p.hist;
     // most recent reference whose full window lies before the acquisition time
     for (let i = refs.length - 1; i >= 0; i--) {
