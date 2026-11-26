@@ -2,7 +2,7 @@
 // catheter placement, map settings, stimulator, drugs/patient, RF generator.
 
 import { STEPS } from '../cases/cases.js';
-import { PLACEMENT_SITES } from '../engine/catheters.js';
+import { PLACEMENT_SITES, ABL_TYPES } from '../engine/catheters.js';
 import { REF_OPTIONS } from '../engine/mapping.js';
 import { esc } from './modals.js';
 
@@ -130,7 +130,12 @@ export class Panels {
       sel.addEventListener('change', () => { if (sel.value) this.app.placeCatheter(id, sel.value); });
       box.appendChild(row);
     }
-    box.appendChild(h(`<div class="cath-row"><span class="cath-row__swatch" style="background:${cs.getPropertyValue('--c-cath-abl')}"></span><span class="cath-row__name">ABL</span><span class="note">steerable · chamber in steer pad</span></div>`));
+    const abl = sim.catheters.ABL;
+    const arow = h(`<div class="cath-row" id="cath-ABL"><span class="cath-row__swatch" style="background:${cs.getPropertyValue('--c-cath-abl')}"></span><span class="cath-row__name">ABL</span>
+      <select class="select" id="abl-type" aria-label="Steerable catheter type" title="Swap the steerable catheter: ablation, or a multipolar mapping catheter for high-density maps">${Object.entries(ABL_TYPES).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('')}</select></div>`);
+    const tsel = arow.querySelector('select'); tsel.value = abl.type;
+    tsel.addEventListener('change', () => this.app.setAblType(tsel.value));
+    box.appendChild(arow);
     this.refreshCatheters();
   }
   refreshCatheters() {
@@ -269,7 +274,8 @@ export class Panels {
     set('ro-pow', a.on ? a.power : 0, a.on ? 'is-ok' : '');
     set('ro-time', a.on ? Math.floor(a.elapsed) : 0);
     const cf = abl.cf; const band = cf < 5 ? 'low' : cf < 10 ? 'fair' : cf <= 40 ? 'good' : 'excess';
-    set('ro-cf', cf.toFixed(0), cf > 40 ? 'is-danger' : cf >= 10 ? 'is-ok' : 'is-warn');
+    if (abl.array) set('ro-cf', '—', ''); // multipolar mapping catheters have no force sensor
+    else set('ro-cf', cf.toFixed(0), cf > 40 ? 'is-danger' : cf >= 10 ? 'is-ok' : 'is-warn');
     $('ro-cf').querySelector('.force-bar').dataset.band = band;
     const dz = a.Z0 - a.Z;
     set('ro-z', a.Z.toFixed(0), a.on ? (a.Z - a.zMin > 10 ? 'is-danger' : dz >= 5 ? 'is-ok' : '') : '');

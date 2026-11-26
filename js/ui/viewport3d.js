@@ -5,10 +5,12 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { CHAMBER_IDS, LANDMARKS_RAW as LR, PV_DEFS, TV_N, MV_N, buildVisualHeart } from '../engine/geometry.js';
+import { CHAMBER_IDS, CHAMBER_INDEX, LANDMARKS_RAW as LR, PV_DEFS, TV_N, MV_N, LV_AXIS, LV_BASE, RV_SIDE, buildVisualHeart } from '../engine/geometry.js';
 
 let visualCache = null; // display meshes are built once per session (same anatomy for every case)
 
+const ZERO3 = [0, 0, 0];
+const arr_half = () => 10; // Orion basket half-length (mm)
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
 const toRGB = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
 
@@ -61,7 +63,7 @@ export class Viewport3D {
     const rim = new THREE.DirectionalLight(0xffe2d0, 0.5); this.camera.add(rim); rim.position.set(0, 40, -80);
     this.scene.add(this.camera);
     this.root = new THREE.Group(); this.root.rotation.x = -Math.PI / 2; this.scene.add(this.root);
-    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: false };
+    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: false, beat: true };
     this.ghost = null; this.labels = [];
     this.raycaster = new THREE.Raycaster();
     this.tween = null;
@@ -102,6 +104,8 @@ export class Viewport3D {
       this.meshes.push(mesh);
     }
     this.nodeCol = new Float32Array(heart.count * 3);
+    this._initBeat();
+    this._buildModerator();
     this._buildContext();
     // swap in the finer display shells (built once, off the first frame)
     const swap = () => { if (this.sim === sim) this._useVisual(visualCache); };
@@ -229,7 +233,7 @@ export class Viewport3D {
     this.meshes.forEach((mesh, i) => {
       const vc = vis[i];
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(vc.positions, 3));
+      g.setAttribute('position', new THREE.BufferAttribute(vc.positions.slice(), 3)); // animated copy; vc.positions stays the rest shape
       g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vc.positions.length).fill(0.55), 3));
       g.setIndex(new THREE.BufferAttribute(vc.indices, 1));
       g.computeVertexNormals();
@@ -237,6 +241,7 @@ export class Viewport3D {
       mesh.geometry.dispose();
       mesh.geometry = g;
       mesh.userData.nodeOf = vc.nodeOf; mesh.userData.pos = vc.positions;
+      mesh.frustumCulled = false;
     });
     this.dirty = true;
   }
@@ -291,7 +296,8 @@ export class Viewport3D {
     const n = Math.min(pts.length, 4000);
     for (let i = 0; i < n; i++) {
       const p = pts[pts.length - n + i];
-      M.makeScale(1, 1, 1).setPosition(p.pos[0], p.pos[1], p.pos[2]);
+      const o = this._off(p.node);
+      M.makeScale(1, 1, 1).setPosition(p.pos[0] + o[0], p.pos[1] + o[1], p.pos[2] + o[2]);
       this.ptMesh.setMatrixAt(i, M);
       if (this.mode === 'volt') { const t = Math.max(0, Math.min(1, (Math.log(Math.max(0.01, p.bip)) - Math.log(s.voltLo)) / (Math.log(s.voltHi) - Math.log(s.voltLo)))); const k = Math.round(t * 255) * 3; col.setRGB(this.voltLUT[k], this.voltLUT[k + 1], this.voltLUT[k + 2]); }
       else if (p.lat != null) { const t = Math.max(0, Math.min(1, (p.lat - s.woi[0]) / (s.woi[1] - s.woi[0]))); const k = Math.round(t * 255) * 3; col.setRGB(this.latLUT[k], this.latLUT[k + 1], this.latLUT[k + 2]); }
@@ -310,7 +316,8 @@ export class Viewport3D {
     for (const les of L) {
       if (les.dur != null && les.dur < 3 && !les.active) continue;
       const r = les.active ? Math.max(1.2, Math.min(3, les.diam / 2)) : 1.6;
-      M.makeScale(r, r, r).setPosition(les.pos[0], les.pos[1], les.pos[2]);
+      const o = this._off(les.node);
+      M.makeScale(r, r, r).setPosition(les.pos[0] + o[0], les.pos[1] + o[1], les.pos[2] + o[2]);
       this.tagMesh.setMatrixAt(k, M);
       col.set(this.tagColors[les.tier || 'weak'] || '#ffffff');
       this.tagMesh.setColorAt(k, col);
@@ -344,11 +351,15 @@ export class Viewport3D {
         this.cathGroup.add(o.group);
       }
       const poles = c.placed ? c.poles : [];
-      const key = pts.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';') + '|' + poles.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';');
+      // the catheter moves with the wall it touches (cardiac motion)
+      const tipNode = id === 'ABL' ? c.surfaceNode : (poles.length ? (o.tipFor === poles[0] ? o.tipNode : (o.tipFor = poles[0], o.tipNode = this.sim.heart.grid.nearest(poles[0], 40))) : -1);
+      const to = this._off(tipNode); o.group.position.set(to[0], to[1], to[2]);
+      const key = pts.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';') + '|' + poles.map((p) => p.map((v) => v.toFixed(1)).join(',')).join(';') + (c.array ? '|' + c.array.contact.map(Number).join('') : '');
       if (key === o.key) continue;
       o.key = key;
       for (const ch of [...o.group.children]) { o.group.remove(ch); ch.geometry.dispose(); }
       if (pts.length < 2) continue;
+      if (id === 'ABL' && c.array) { this._drawArray(o, pts, c.array); continue; }
       const abl = id === 'ABL';
       const R = abl ? 1.17 : id === 'CS' ? 0.9 : 1.0; // 7 Fr ablation, 6 Fr diagnostic
       const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p[0], p[1], p[2])), false, 'centripetal');
@@ -383,8 +394,9 @@ export class Viewport3D {
     const abl = cats.ABL;
     if (!this.cfArrow) { this.cfArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), 10, 0x3ccf7a, 3, 2); this.cathGroup.add(this.cfArrow); }
     const len = Math.max(0.01, abl.cf * 0.35);
-    this.cfArrow.visible = abl.cf > 1;
-    this.cfArrow.position.set(...abl.tip);
+    this.cfArrow.visible = abl.cf > 1 && !abl.array;
+    const ao = this._off(abl.surfaceNode);
+    this.cfArrow.position.set(abl.tip[0] + ao[0], abl.tip[1] + ao[1], abl.tip[2] + ao[2]);
     this.cfArrow.setDirection(new THREE.Vector3(...abl.tipDir).normalize());
     this.cfArrow.setLength(len + 0.5, 2, 1.4);
     this.cfArrow.setColor(abl.cf > 40 ? css('--c-danger') : abl.cf >= 10 ? css('--c-ok') : css('--c-warn'));
@@ -401,6 +413,166 @@ export class Viewport3D {
     for (const p of sites) { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), mat); m.position.set(...p); g.add(m); }
     g.renderOrder = 10;
     this.ghost = g; this.root.add(g);
+  }
+
+  // ------------------------------------------------------------------ heartbeat
+  // Wall motion driven by the simulated activation: each engine node contracts after its
+  // own activation (atria ~70 ms upstroke, ventricles ~160 ms with a plateau, so motion
+  // tracks the ECG, arrhythmias and dyssynchrony). Radial motion is inward along the
+  // wall normal; in ventricular systole the base (AV plane) descends toward the apex and
+  // pulls the atria with it. Non-conducting scar is akinetic. Display only: the engine,
+  // mapping and catheter physics keep the rest shape.
+  _initBeat() {
+    const heart = this.sim.heart, N = heart.count;
+    this.nodeDisp = new Float32Array(N * 3);
+    this.beatState = new Float32Array(N);
+    this.beatWasOn = false;
+    const base = [25, 12, -8], ap = LR.LV_APEX;
+    const ax = [ap[0] - base[0], ap[1] - base[1], ap[2] - base[2]], al = Math.hypot(...ax);
+    this.beatAxis = ax.map((v) => v / al);
+    this.beatLong = new Float32Array(N); // longitudinal amplitude per node (mm)
+    for (let n = 0; n < N; n++) {
+      const sAx = (heart.pos[3 * n] - base[0]) * this.beatAxis[0] + (heart.pos[3 * n + 1] - base[1]) * this.beatAxis[1] + (heart.pos[3 * n + 2] - base[2]) * this.beatAxis[2];
+      this.beatLong[n] = heart.chamber[n] >= 2 ? 6 * Math.max(0, 1 - Math.max(0, sAx) / al) : 5 * Math.max(0, Math.min(1, 1 + sAx / 45));
+    }
+  }
+  // Multipolar mapping catheter: 8 Fr shaft, then the HD Grid paddle or the Orion basket.
+  // Electrodes in wall contact are bright; the others are dimmed.
+  _drawArray(o, pts, arr) {
+    const V = (p) => new THREE.Vector3(p[0], p[1], p[2]);
+    if (!o.dimMat) { o.dimMat = new THREE.MeshPhongMaterial({ color: 0x7d8794, shininess: 60 }); o.splineMat = new THREE.MeshPhongMaterial({ color: 0x2b3440, shininess: 30 }); }
+    const shaft = new THREE.CatmullRomCurve3(pts.map(V), false, 'centripetal');
+    const L = shaft.getLength();
+    const grid = arr.kind === 'grid';
+    // the shaft ends where the array begins
+    const cut = grid ? 3 : 20;
+    const uEnd = Math.max(0.05, 1 - cut / L);
+    const sp = []; for (let i = 0; i <= 40; i++) sp.push(shaft.getPointAt((uEnd * i) / 40));
+    const sc = new THREE.CatmullRomCurve3(sp, false, 'centripetal');
+    o.group.add(new THREE.Mesh(new THREE.TubeGeometry(sc, Math.max(24, Math.round(L / 1.5)), 1.3, 12, false), o.shaftMat));
+    const end = sp[sp.length - 1];
+    const ns = arr.splines, ne = arr.perSpline;
+    const add3 = (a, b, k) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
+    let prox, dist;
+    if (grid) { prox = V(add3(arr.C, arr.u, -7.5)); dist = null; }
+    else { prox = V(add3(arr.C, arr.a, -arr_half(arr))); dist = V(add3(arr.C, arr.a, arr_half(arr))); }
+    // neck from the shaft end to the array hub
+    o.group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(end, prox), 4, 0.8, 8, false), o.shaftMat));
+    for (let i = 0; i < ns; i++) {
+      const e = []; for (let j = ne - 1; j >= 0; j--) e.push(V(arr.pos[i * ne + j])); // proximal → distal
+      let cp;
+      if (grid) {
+        // paddle splines fan out from the neck and loop back at the distal end
+        const off = (i - 1.5) * 3;
+        const dEnd = V(add3(add3(arr.C, arr.u, 6.2), arr.v, off * 0.55));
+        cp = [prox, ...e, dEnd];
+      } else cp = [prox, ...e, dist];
+      const curve = new THREE.CatmullRomCurve3(cp, false, 'centripetal');
+      o.group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 30, grid ? 0.3 : 0.25, 6, false), o.splineMat));
+    }
+    if (grid) {
+      // distal loops joining A-B and C-D
+      for (const [a, b] of [[0, 1], [2, 3], [1, 2]]) {
+        const pa = V(add3(add3(arr.C, arr.u, 6.2), arr.v, (a - 1.5) * 3 * 0.55)), pb = V(add3(add3(arr.C, arr.u, 6.2), arr.v, (b - 1.5) * 3 * 0.55));
+        o.group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(pa, pb), 2, 0.3, 6, false), o.splineMat));
+      }
+    } else {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 10, 8), o.splineMat); cap.position.copy(dist); o.group.add(cap);
+    }
+    const eg = new THREE.SphereGeometry(grid ? 0.55 : 0.5, 10, 8);
+    for (let k = 0; k < arr.pos.length; k++) {
+      const m = new THREE.Mesh(eg, arr.contact[k] ? o.elecMat : o.dimMat);
+      m.position.copy(V(arr.pos[k])); o.group.add(m);
+    }
+  }
+
+  // RV moderator band (septomarginal trabeculation): a muscular bundle crossing the RV
+  // cavity from the mid-septum to the base of the anterior papillary muscle. Display only.
+  _buildModerator() {
+    const heart = this.sim.heart, RV = CHAMBER_INDEX.RV;
+    const q = LV_BASE.map((b, i) => b + LV_AXIS[i] * 52 + RV_SIDE[i] * 24);
+    const sep = heart.grid.nearest(q, 30, (i) => heart.chamber[i] === RV);
+    if (sep < 0) { this.moderator = null; return; }
+    const ps = [heart.pos[3 * sep], heart.pos[3 * sep + 1], heart.pos[3 * sep + 2]];
+    // free-wall attachment: the RV wall point across the cavity, a little toward the apex
+    const dir = RV_SIDE.map((v, i) => v + LV_AXIS[i] * 0.35);
+    let fw = -1, best = -Infinity;
+    heart.grid.query(ps, 32, (i, d) => {
+      if (heart.chamber[i] !== RV || d < 9) return;
+      const v = [heart.pos[3 * i] - ps[0], heart.pos[3 * i + 1] - ps[1], heart.pos[3 * i + 2] - ps[2]];
+      const al = (v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2]) / d;
+      if (al > best) { best = al; fw = i; }
+    });
+    if (fw < 0 || best < 0.75) { this.moderator = null; return; }
+    this.moderator = { a: sep, b: fw, mat: new THREE.MeshPhongMaterial({ color: new THREE.Color(css('--c-shell-nomap')), shininess: 20 }), mesh: null, key: '' };
+    this._updateModerator();
+  }
+  _updateModerator() {
+    const m = this.moderator; if (!m) return;
+    const P = this.sim.heart.pos, oa = this._off(m.a), ob = this._off(m.b);
+    const a = new THREE.Vector3(P[3 * m.a] + oa[0], P[3 * m.a + 1] + oa[1], P[3 * m.a + 2] + oa[2]);
+    const b = new THREE.Vector3(P[3 * m.b] + ob[0], P[3 * m.b + 1] + ob[1], P[3 * m.b + 2] + ob[2]);
+    const key = a.toArray().concat(b.toArray()).map((v) => v.toFixed(2)).join(',');
+    if (key !== m.key) {
+      m.key = key;
+      // slightly bowed toward the apex, thicker at both insertions
+      const mid = a.clone().add(b).multiplyScalar(0.5).add(new THREE.Vector3(...LV_AXIS).multiplyScalar(2.5));
+      const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+      const geo = new THREE.TubeGeometry(curve, 16, 1.7, 10, false);
+      if (m.mesh) { m.mesh.geometry.dispose(); m.mesh.geometry = geo; } else { m.mesh = new THREE.Mesh(geo, m.mat); this.root.add(m.mesh); }
+    }
+    const rv = this.meshes[CHAMBER_INDEX.RV];
+    m.mesh.visible = rv.visible && rv.material.opacity > 0.2;
+  }
+  _off(n) {
+    const D = this.nodeDisp;
+    if (!D || n == null || n < 0 || n >= this.beatState.length) return ZERO3;
+    return [D[3 * n], D[3 * n + 1], D[3 * n + 2]];
+  }
+  _beat() {
+    const sim = this.sim, eng = sim.engine, heart = sim.heart, N = heart.count;
+    const D = this.nodeDisp, S = this.beatState, nrm = heart.normal, ax = this.beatAxis;
+    const on = this.show.beat;
+    const now = sim.t;
+    const smooth = (a) => a * a * (3 - 2 * a);
+    // contraction curve: delay, upstroke, plateau, relaxation (ms)
+    const curve = (tau, d, rise, hold, fall) => {
+      tau -= d;
+      if (tau <= 0) return 0;
+      if (tau < rise) return smooth(tau / rise);
+      tau -= rise; if (tau < hold) return 1;
+      tau -= hold; return tau < fall ? 1 - smooth(tau / fall) : 0;
+    };
+    const AMP = [1.6, 1.4, 3.0, 4.2]; // radial excursion by chamber (mm)
+    let vSum = 0, vN = 0;
+    for (let n = 0; n < N; n++) {
+      const ch = heart.chamber[n];
+      const tau = now - eng.lastAct[n];
+      const tgt = on ? (ch >= 2 ? curve(tau, 25, 160, 70, 150) : curve(tau, 15, 70, 30, 90)) : 0;
+      S[n] += (tgt - S[n]) * 0.45;
+      if (ch >= 2) { vSum += S[n]; vN++; }
+    }
+    const gV = vN ? vSum / vN : 0; // global ventricular systole (drives AV-plane descent)
+    for (let n = 0; n < N; n++) {
+      const ch = heart.chamber[n];
+      const kin = eng.cv[n] > 0 ? 1 : 0.08; // dense scar / ablated core is akinetic
+      const r = -AMP[ch] * S[n] * kin;
+      const l = this.beatLong[n] * (ch >= 2 ? S[n] * kin : gV) * (on ? 1 : 0);
+      D[3 * n] = nrm[3 * n] * r + ax[0] * l;
+      D[3 * n + 1] = nrm[3 * n + 1] * r + ax[1] * l;
+      D[3 * n + 2] = nrm[3 * n + 2] * r + ax[2] * l;
+    }
+    for (const mesh of this.meshes) {
+      const nodeOf = mesh.userData.nodeOf; if (!nodeOf || !mesh.visible) continue;
+      const P = mesh.geometry.attributes.position.array, B = mesh.userData.pos;
+      for (let v = 0; v < nodeOf.length; v++) {
+        const k = 3 * nodeOf[v];
+        P[3 * v] = B[3 * v] + D[k]; P[3 * v + 1] = B[3 * v + 1] + D[k + 1]; P[3 * v + 2] = B[3 * v + 2] + D[k + 2];
+      }
+      mesh.geometry.attributes.position.needsUpdate = true;
+    }
+    // after switching off, run until the walls have settled back to rest
+    this.beatWasOn = on || S.some((x) => x > 0.002);
   }
 
   // ------------------------------------------------------------------ picking
@@ -450,6 +622,13 @@ export class Viewport3D {
       }
       const L = sim.ablation.lesions;
       if (sim.ablation.on || L.length !== this.lastLesionN || this.dirty) { this.updateTags(); this.lastLesionN = L.length; }
+      if (this.show.beat || this.beatWasOn) {
+        this._beat();
+        this.updatePoints(); this.updateTags();
+      }
+      if (this.moderator) {
+        this._updateModerator();
+      }
       this.updateCatheters();
       if (this.ghost) { const s = 1 + 0.15 * Math.sin(now / 250); this.ghost.children.forEach((m) => m.scale.setScalar(s)); }
       this.dirty = false;

@@ -149,9 +149,15 @@ export class Sim {
     const prev = abl.tip.slice();
     abl.update(this.t);
     const moved = Math.hypot(prev[0] - abl.tip[0], prev[1] - abl.tip[1], prev[2] - abl.tip[2]);
-    if (moved > 0.4 || !this._ablSynced) {
-      this._ablSynced = true;
-      for (const ch of abl.info.channels) this.egm.setChannel(ch.id, ch.label, 'ABL', abl.poles[ch.a], ch.b >= 0 ? abl.poles[ch.b] : null);
+    if (moved > 0.4 || this._ablSynced !== abl.type) {
+      this._ablSynced = abl.type;
+      const ids = new Set();
+      for (const ch of abl.info.channels) {
+        const c = this.egm.setChannel(ch.id, ch.label, 'ABL', abl.poles[ch.a], ch.b >= 0 ? abl.poles[ch.b] : null);
+        c.label = ch.label; c.hidden = false; ids.add(ch.id);
+      }
+      // extra bipoles of a multipolar catheter are hidden when the ablation catheter is back
+      for (const id of ['MAP3', 'MAP4']) if (!ids.has(id) && this.egm.byId[id]) this.egm.byId[id].hidden = true;
     }
   }
 

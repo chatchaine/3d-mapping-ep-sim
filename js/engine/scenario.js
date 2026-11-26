@@ -117,11 +117,14 @@ export function buildScenario(heart, cfgIn) {
   // ---- inter-atrial connections (Bachmann's bundle, fossa rim, CS musculature)
   const linkBoth = (a, b, delay) => { eng.addLink(a, b, { delay, kind: 'bridge' }); eng.addLink(b, a, { delay, kind: 'bridge' }); };
   const bbRA = pick([-14, -2, 26], 'RA'), bbLA = pick([12, 26, 28], 'LA');
-  linkBoth(bbRA, bbLA, len(sub(P(eng, bbRA), P(eng, bbLA))) / 2.5);
+  // Conduction delays are fixed (calibrated values): they encode the bundle's path length and
+  // conduction velocity, not the straight-line distance between the two shells, so they stay
+  // the same however closely the atria abut across the septum.
+  linkBoth(bbRA, bbLA, 16.5); // Bachmann's bundle (~41 mm at 2.5 m/s)
   const foRA = pick(LR.FOSSA_OVALIS, 'RA'), foLA = pick(LR.FOSSA_OVALIS, 'LA');
-  linkBoth(foRA, foLA, len(sub(P(eng, foRA), P(eng, foLA))) / 0.8 + 8);
+  linkBoth(foRA, foLA, 27.2); // fossa ovalis rim
   const csLA = pick(LR.CS_9_10, 'LA');
-  linkBoth(nodes.CS_OS, csLA, len(sub(P(eng, nodes.CS_OS), P(eng, csLA))) / 1.0 + 5);
+  linkBoth(nodes.CS_OS, csLA, 25.8); // CS musculature
   sys.atrialBridges = { bbRA, bbLA, foRA, foLA, csLA };
 
   // ---- septal RV<->LV connections
@@ -381,5 +384,9 @@ export function seedVT(eng, sys) {
   }
   const t = eng.t + 1;
   eng.makeRefractory(refr, t + 260);
+  // the His-Purkinje system was just engaged by the preceding beat: keep it refractory so the
+  // first exit wavefront cannot short-circuit retrogradely back to the isthmus entrance
+  const hps = ['HIS', 'LBB', 'RBB'].map((k) => sys.names[k]).filter((n) => n != null);
+  if (hps.length) eng.makeRefractory(hps, t + 200);
   return eng.stimulate(stim, t, -5);
 }

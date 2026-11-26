@@ -66,6 +66,27 @@ function sdfGrad(f, p) {
   return norm([f(p[0] + e, p[1], p[2]) - f(p[0] - e, p[1], p[2]), f(p[0], p[1] + e, p[2]) - f(p[0], p[1] - e, p[2]), f(p[0], p[1], p[2] + e) - f(p[0], p[1], p[2] - e)]);
 }
 
+// Interchangeable catheter on the steerable (ABL) shaft. The ablation catheter is the default;
+// the multipolar mapping catheters record many closely spaced small electrodes at once
+// (high-density mapping) but cannot deliver RF and have no contact-force sensor.
+//   HD Grid: 4 x 4 electrodes on a flat flexible paddle, 3 mm spacing (splines A-D, poles 1-4)
+//   Orion:   64-pole mini-basket, 8 splines (A-H) x 8 electrodes, ~18 mm deployed
+const chans = (pre, list) => list.map(([id, l, a, b]) => ({ id, label: `${pre} ${l}`, a, b }));
+export const ABL_TYPES = {
+  ABL: { name: 'Ablation', label: 'Ablation (3.5 mm tip, 4-pole)', rf: true, info: CATHETER_INFO.ABL },
+  HDG: {
+    name: 'HD Grid', label: 'HD Grid (16-pole grid)', rf: false, splines: 4, perSpline: 4,
+    info: { name: 'HD Grid', poles: 16, spacing: 3, color: '--c-cath-abl', channels: [
+      ...chans('Grid', [['ABLd', 'A1-2', 0, 1], ['ABLp', 'B1-2', 4, 5], ['MAP3', 'C1-2', 8, 9], ['MAP4', 'D1-2', 12, 13]]), { id: 'ABLuni', label: 'Grid uni', a: 0, b: -1 }] },
+  },
+  ORION: {
+    name: 'Orion', label: 'Orion (64-pole basket)', rf: false, splines: 8, perSpline: 8,
+    info: { name: 'Orion', poles: 64, spacing: 2.5, color: '--c-cath-abl', channels: [
+      ...chans('Orion', [['ABLd', 'A1-2', 0, 1], ['ABLp', 'C1-2', 16, 17], ['MAP3', 'E1-2', 32, 33], ['MAP4', 'G1-2', 48, 49]]), { id: 'ABLuni', label: 'Orion uni', a: 0, b: -1 }] },
+  },
+};
+const HDG_PITCH = 3, ORION_D = 18, ORION_L = 20;
+
 // Fixed catheter: poles placed along the endocardial surface from a tip site.
 export class FixedCatheter {
   constructor(sim, id) {
@@ -203,7 +224,8 @@ function alongFromEnd(pts, s) {
 
 export class AblationCatheter {
   constructor(sim) {
-    this.sim = sim; this.id = 'ABL'; this.info = CATHETER_INFO.ABL;
+    this.sim = sim; this.id = 'ABL'; this.info = CATHETER_INFO.ABL; this.type = 'ABL';
+    this.array = null; // multipolar electrode array: {pos[], contact[], splines, perSpline}
     this.chamber = sim.cfg.ablChamber || 'RA';
     this.deflect = 0.35; this.rotate = 0; this.advance = 30; // -1..1, deg, mm
     this.sheathBend = 0; this.sheathRot = 0; // deg
@@ -222,6 +244,13 @@ export class AblationCatheter {
     this.sim.logEvent('abl_chamber', { chamber: ch });
     this.update(this.sim.t);
   }
+  setType(type) {
+    if (!ABL_TYPES[type] || type === this.type) return;
+    this.type = type; this.info = ABL_TYPES[type].info;
+    this.sim.logEvent('abl_type', { type });
+    this.update(this.sim.t);
+  }
+  isMapping() { return this.type !== 'ABL'; }
   // exit direction of the steerable sheath
   sheathDir(bend = this.sheathBend, srot = this.sheathRot) {
     const d = ACCESS[this.chamber].dir;
@@ -302,6 +331,10 @@ export class AblationCatheter {
     return best;
   }
   moveTo(target, cfTarget = 12) {
+    // snap the target onto the (displayed) wall first, so a node position or picked point
+    // yields the intended contact force wherever it lies relative to the surface
+    const f0 = chamberSDF(this.chamber);
+    for (let it = 0; it < 3; it++) { const d = f0(target[0], target[1], target[2]); if (Math.abs(d) < 0.05) break; target = sub(target, scl(sdfGrad(f0, target), d)); }
     const b = this.solveTo(target);
     this.rotate = ((b.rot + 540) % 360) - 180; this.deflect = b.df; this.advance = b.adv;
     this.sheathBend = b.sb; this.sheathRot = ((b.sr + 540) % 360) - 180;
@@ -372,10 +405,56 @@ export class AblationCatheter {
     this.path = pts;
     const heart = this.sim.heart;
     this.surfaceNode = nearestInChamber(heart, tip, this.chamber);
-    // poles: tip electrode, then rings, by arc length along the flexed shaft
-    this.poles = POLE_S.map((sp) => (sp === 0 ? tip.slice() : alongFromEnd(pts, sp).p));
+    if (this.type === 'ABL') {
+      // poles: tip electrode, then rings, by arc length along the flexed shaft
+      this.poles = POLE_S.map((sp) => (sp === 0 ? tip.slice() : alongFromEnd(pts, sp).p));
+      this.array = null;
+    } else {
+      this.array = this.type === 'HDG' ? this._gridArray(f, tip) : this._basketArray(f, tip);
+      this.poles = this.array.pos;
+    }
     this.history.push({ t, p: tip.slice() });
     while (this.history.length > 40) this.history.shift();
+  }
+  // HD Grid: the paddle lies flat on the wall when in contact (splines conform to the
+  // surface); out of contact it extends straight from the shaft.
+  _gridArray(f, tip) {
+    const n = this.wallNormal, contact = this.cf >= 3;
+    let u = this.tipDir;
+    if (contact) {
+      u = sub(u, scl(n, dot(u, n)));
+      u = len(u) > 0.15 ? norm(u) : perpBasis(n)[0];
+    }
+    const v = contact ? norm(cross(n, u)) : perpBasis(u)[0];
+    const C = contact ? tip : add(tip, scl(u, 6.5));
+    const pos = [], con = [];
+    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+      let p = add(C, add(scl(v, (i - 1.5) * HDG_PITCH), scl(u, (1.5 - j) * HDG_PITCH)));
+      if (contact) {
+        const d = f(p[0], p[1], p[2]);
+        if (d > -6) p = sub(p, scl(sdfGrad(f, p), d + 0.4)); // conform to the wall
+      }
+      const d = f(p[0], p[1], p[2]);
+      if (d > -0.4) p = sub(p, scl(sdfGrad(f, p), d + 0.4));
+      pos.push(p); con.push(f(p[0], p[1], p[2]) > -1.6);
+    }
+    return { pos, contact: con, splines: 4, perSpline: 4, C, u, v, kind: 'grid' };
+  }
+  // Orion: a mini-basket whose distal pole is the catheter tip; splines flatten against the wall.
+  _basketArray(f, tip) {
+    const a = this.tipDir, [e1, e2] = perpBasis(a), C = sub(tip, scl(a, ORION_L / 2));
+    const pos = [], con = [];
+    for (let k = 0; k < 8; k++) {
+      const ph = (k * Math.PI) / 4, rad = add(scl(e1, Math.cos(ph)), scl(e2, Math.sin(ph)));
+      for (let j = 0; j < 8; j++) {
+        const th = Math.PI * (0.16 + (0.62 * j) / 7); // electrode 1 is distal
+        let p = add(C, add(scl(a, (ORION_L / 2) * Math.cos(th)), scl(rad, (ORION_D / 2) * Math.sin(th))));
+        const d = f(p[0], p[1], p[2]);
+        if (d > -0.4) p = sub(p, scl(sdfGrad(f, p), d + 0.4));
+        pos.push(p); con.push(f(p[0], p[1], p[2]) > -1.8);
+      }
+    }
+    return { pos, contact: con, splines: 8, perSpline: 8, C, a, e1, e2, kind: 'basket' };
   }
   stable() {
     const h = this.history.filter((x) => this.sim.t - x.t < 500);

@@ -11,6 +11,7 @@ import { Panels } from './ui/panels.js';
 import { notify, toast, clearAlerts, announce, setCriticalHandler } from './ui/alerts.js';
 import { openModal, quizModal, helpModal, briefingBody, closeTop, closeAll, isModalOpen, esc } from './ui/modals.js';
 import { PLACEMENT_SITES } from './engine/catheters.js';
+import { nearestInChamber } from './engine/geometry.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -202,6 +203,7 @@ class App {
   acquire(viaClick) {
     const sim = this.sim, abl = sim.catheters.ABL;
     if (!this.wf.reached('mapping') && !this.wf.reached('maneuvers')) { toast('info', 'Mapping opens after the induction step'); return null; }
+    if (abl.isMapping() && !viaClick) return this.acquireArray();
     if (!viaClick) {
       if (abl.cf < 3) { toast('info', `No contact: point rejected (CF ${abl.cf.toFixed(0)} g)`); return null; }
       if (!abl.stable()) { toast('info', 'Catheter unstable: point rejected'); return null; }
@@ -211,6 +213,35 @@ class App {
     if (sim.mapping.points.length <= 3) toast('success', `Point accepted (#${p.id}${p.lat != null ? ` · LAT ${p.lat} ms` : ''} · ${p.bip.toFixed(2)} mV)`);
     return p;
   }
+  // Multipolar mapping catheter: one acquisition records every electrode in wall contact
+  // (high-density mapping). Electrodes over the same mesh node are merged.
+  acquireArray(viaClick = false) {
+    const sim = this.sim, abl = sim.catheters.ABL, arr = abl.array;
+    if (!arr) return null;
+    if (!viaClick && !abl.stable()) { toast('info', 'Catheter unstable: beat rejected'); return null; }
+    const used = new Set(), got = [];
+    for (let i = 0; i < arr.pos.length; i++) {
+      if (!arr.contact[i]) continue;
+      const n = nearestInChamber(sim.heart, arr.pos[i], abl.chamber);
+      if (n < 0 || used.has(n)) continue;
+      used.add(n);
+      const p = sim.mapping.acquireAt(n, arr.pos[i], 10, abl.type.toLowerCase());
+      if (!p.error) got.push(p);
+    }
+    if (!got.length) { toast('info', `${abl.info.name}: no electrodes in contact`); return null; }
+    const lat = got.filter((p) => p.lat != null).map((p) => p.lat);
+    toast('success', `${abl.info.name}: ${got.length} points${lat.length ? ` · LAT ${Math.min(...lat)}…${Math.max(...lat)} ms` : ''}`);
+    return got[0];
+  }
+  setAblType(type) {
+    const abl = this.sim.catheters.ABL;
+    if (abl.type === type) return;
+    if (this.sim.ablation.on) this.sim.ablation.stop('user');
+    abl.setType(type); this.sim.updateABL();
+    const sel = $('abl-type'); if (sel) sel.value = type;
+    this.egm.draw();
+    toast('info', abl.isMapping() ? `${abl.info.name} mapping catheter: Acquire records every electrode in contact (no RF, no contact-force sensing)` : 'Ablation catheter (3.5 mm irrigated tip)');
+  }
   surfaceClick(ev) {
     const hit = this.vp.pickSurface(ev.clientX, ev.clientY);
     if (!hit) return;
@@ -218,7 +249,8 @@ class App {
     if (hit.chamber !== abl.chamber) this.setAblChamber(hit.chamber);
     abl.moveTo(hit.pos, 12); this.sim.updateABL();
     this.wf.rec.surfaceClicks++;
-    this.acquire(true);
+    if (abl.isMapping()) { if (this.wf.reached('mapping') || this.wf.reached('maneuvers')) this.acquireArray(true); else toast('info', 'Mapping opens after the induction step'); }
+    else this.acquire(true);
   }
   toggleRF() {
     const a = this.sim.ablation;
@@ -336,7 +368,7 @@ class App {
     $('map-type').addEventListener('change', (e) => { this.vp.mode = e.target.value; this.updateColorbar(); });
     $('abl-chamber').addEventListener('change', (e) => this.setAblChamber(e.target.value));
     const tg = (id, key, fn) => $(id).addEventListener('click', (e) => { const b = e.currentTarget; const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); if (key) this.vp.show[key] = on; fn?.(on); this.vp.dirty = true; });
-    tg('tg-points', 'points'); tg('tg-tags', 'tags'); tg('tg-cath', 'cath'); tg('tg-labels', 'labels'); tg('tg-others', 'others', () => this.vp.updateVisibility()); tg('tg-context', 'context', () => this.vp.updateVisibility());
+    tg('tg-points', 'points'); tg('tg-tags', 'tags'); tg('tg-cath', 'cath'); tg('tg-labels', 'labels'); tg('tg-others', 'others', () => this.vp.updateVisibility()); tg('tg-context', 'context', () => this.vp.updateVisibility()); tg('tg-beat', 'beat');
     $('tg-opacity').addEventListener('click', () => this.cycleOpacity());
     document.querySelectorAll('.view-presets__btn').forEach((b) => b.addEventListener('click', () => this.vp.setView(b.dataset.view)));
     document.querySelectorAll('#sweep-seg .segmented__option').forEach((b) => b.addEventListener('click', () => this.setSweep(Number(b.dataset.speed))));
@@ -475,8 +507,14 @@ class App {
       const wf = this.wf;
       if (wf.step.id === 'induction' && !wf.rec.induced && (sim.mech.clinicalActive?.() || (this.c.induction.vf && wf._defibOK()))) { wf.rec.induced = true; this.onWorkflow('induced'); }
       const abl = sim.catheters.ABL; const led = $('steer-led');
-      led.dataset.contact = abl.cf < 3 ? 'none' : abl.cf < 10 ? 'light' : abl.cf <= 40 ? 'good' : 'excess';
-      $('steer-cf').textContent = `${abl.cf.toFixed(0)} g`;
+      if (abl.array) {
+        const k = abl.array.contact.filter(Boolean).length;
+        led.dataset.contact = k === 0 ? 'none' : k < abl.array.pos.length / 4 ? 'light' : 'good';
+        $('steer-cf').textContent = `${k}/${abl.array.pos.length} in contact`;
+      } else {
+        led.dataset.contact = abl.cf < 3 ? 'none' : abl.cf < 10 ? 'light' : abl.cf <= 40 ? 'good' : 'excess';
+        $('steer-cf').textContent = `${abl.cf.toFixed(0)} g`;
+      }
       $('steer-read').textContent = `defl ${abl.deflect > 0 ? '+' : ''}${Math.round(abl.deflect * 100)}% · rot ${Math.round(abl.rotate)}° · adv ${Math.round(abl.advance)} mm`;
       $('steer-read2').textContent = `sheath ${Math.round(abl.sheathBend)}° @ ${Math.round(abl.sheathRot)}°`;
       const s = sim.mapping.settings;

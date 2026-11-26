@@ -143,12 +143,18 @@ class ScarVTMech extends BaseMech {
       this.sim.heart.grid.query(p, 18, (n) => { if (eng.chamber[n] === CHAMBER_INDEX.LV && eng.cv[n] > 0 && !sys.channelAngle.has(n)) z.add(n); });
       this._exitZone = [...z];
     }
-    const zone = this._exitZone;
+    const zone = this._exitZone, chan = [...sys.channelAngle.keys()];
+    const vch = [CHAMBER_INDEX.RV, CHAMBER_INDEX.LV].map((i) => this.sim.heart.chambers[i]);
     const attempt = () => {
-      let ready = true;
-      for (const n of zone) if (eng.refrEnd[n] > eng.t + 15) { ready = false; break; }
-      if (ready || eng.t - t0 >= 900) this.seed();
-      else eng.addTimer(eng.t + 10, attempt);
+      // the extrastimuli can start a fast, unstable circuit of their own: wait until the
+      // isthmus has been silent for 200 ms so the seeded wave does not collide with it
+      let lastCh = -Infinity; for (const n of chan) if (eng.lastAct[n] > lastCh) lastCh = eng.lastAct[n];
+      let lastV = -Infinity; for (const c of vch) for (let k = c.offset; k < c.offset + c.count; k++) if (eng.lastAct[k] > lastV) lastV = eng.lastAct[k];
+      let ready = eng.t - lastCh >= 200 && eng.t - lastV >= 80;
+      if (ready) for (const n of zone) if (eng.refrEnd[n] > eng.t + 15) { ready = false; break; }
+      if (ready) this.seed();
+      else if (eng.t - t0 < 3000) eng.addTimer(eng.t + 10, attempt);
+      // still busy after 3 s: a tachycardia is already running, so no seed is needed
     };
     eng.addTimer(t0 + (this.cfg.reentry?.seedDelay || 380), attempt);
   }

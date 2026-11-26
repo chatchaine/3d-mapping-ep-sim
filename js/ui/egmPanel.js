@@ -8,9 +8,9 @@
 
 import { RING } from '../engine/egm.js';
 
-const ORDER = ['I', 'II', 'aVF', 'V1', 'V6', 'HRA', 'HISd', 'HISp', 'CS910', 'CS78', 'CS56', 'CS34', 'CS12', 'RVA', 'ABLd', 'ABLp', 'PV'];
+const ORDER = ['I', 'II', 'aVF', 'V1', 'V6', 'HRA', 'HISd', 'HISp', 'CS910', 'CS78', 'CS56', 'CS34', 'CS12', 'RVA', 'ABLd', 'ABLp', 'MAP3', 'MAP4', 'PV'];
 const LABEL = { I: 'I', II: 'II', aVF: 'aVF', V1: 'V1', V6: 'V6', HRA: 'HRA d', HISd: 'His d', HISp: 'His p', CS910: 'CS 9-10', CS78: 'CS 7-8', CS56: 'CS 5-6', CS34: 'CS 3-4', CS12: 'CS 1-2', RVA: 'RVA d', ABLd: 'ABL d', ABLp: 'ABL p', PV: 'PV loop' };
-const COLOR = { I: '--c-egm-surface', II: '--c-egm-surface', aVF: '--c-egm-surface', V1: '--c-egm-surface', V6: '--c-egm-surface', HRA: '--c-egm-hra', HISd: '--c-egm-his', HISp: '--c-egm-his', CS910: '--c-egm-cs', CS78: '--c-egm-cs', CS56: '--c-egm-cs', CS34: '--c-egm-cs', CS12: '--c-egm-cs', RVA: '--c-egm-rva', ABLd: '--c-egm-abl', ABLp: '--c-egm-abl', PV: '--c-egm-his' };
+const COLOR = { I: '--c-egm-surface', II: '--c-egm-surface', aVF: '--c-egm-surface', V1: '--c-egm-surface', V6: '--c-egm-surface', HRA: '--c-egm-hra', HISd: '--c-egm-his', HISp: '--c-egm-his', CS910: '--c-egm-cs', CS78: '--c-egm-cs', CS56: '--c-egm-cs', CS34: '--c-egm-cs', CS12: '--c-egm-cs', RVA: '--c-egm-rva', ABLd: '--c-egm-abl', ABLp: '--c-egm-abl', MAP3: '--c-egm-abl', MAP4: '--c-egm-abl', PV: '--c-egm-his' };
 const GUTTER = 74;
 const SCROLL_H = 9; // scroll bar strip at the bottom of the canvas
 const KEEP = RING - 500; // ms of history that is safe to display
@@ -178,7 +178,7 @@ export class EGMPanel {
 
   channels() {
     const sim = this.sim; if (!sim) return [];
-    return ORDER.filter((id) => sim.egm.byId[id] && (id !== 'PV' || sim.cfg.mechanism === 'af'));
+    return ORDER.filter((id) => sim.egm.byId[id] && !sim.egm.byId[id].hidden && (id !== 'PV' || sim.cfg.mechanism === 'af'));
   }
 
   draw() {
@@ -210,8 +210,8 @@ export class EGMPanel {
     for (let r = 0; r < n; r++) {
       const id = chs[r], y0 = r * rowH + rowH / 2;
       ctx.fillStyle = this.colors[id] || '#ccc';
-      ctx.fillText(LABEL[id] || id, 6, y0);
       const ch = egm.byId[id];
+      ctx.fillText((ch.group === 'ABL' ? ch.label : LABEL[id]) || id, 6, y0);
       const surf = ch.kind === 'surface';
       const g = rowH * 0.42 * this.gain * (ch.gain || 1);
       const clip = surf ? 2.2 : 1.6; // amplifier clipping like a recording system

@@ -184,6 +184,9 @@ export const CHAMBER_DEFS = {
     k: 7,
     prims: [
       ellipsoid([28, 40, 12], [28, 19, 22]),
+      // septal wall: the LA abuts the RA across the interatrial septum (fossa ovalis),
+      // lying posterior and leftward of it; carved against the RA below (subtract)
+      ellipsoid([5, 29, 8], [14, 12, 17]),
       capsule(PV_DEFS.LSPV.a, PV_DEFS.LSPV.b, PV_DEFS.LSPV.r),
       capsule(PV_DEFS.LIPV.a, PV_DEFS.LIPV.b, PV_DEFS.LIPV.r),
       capsule(PV_DEFS.RSPV.a, PV_DEFS.RSPV.b, PV_DEFS.RSPV.r),
@@ -197,6 +200,8 @@ export const CHAMBER_DEFS = {
       capsule([55, 11, 32], [55, 9, 39], 3.5),
       capsule([27, 32, 0], [25, 15, -10], 15), // mitral vestibule
     ],
+    // interatrial septum ~4 mm: the LA stops short of the RA body, septum and SVC
+    subtract: { prims: [ellipsoid([-28, 15, 8], [24, 22, 27]), ellipsoid([-12, 14, -12], [11, 10, 12]), capsule([-26, 20, 26], [-25, 22, 62], 10)], inflate: 4, k: 3 },
     holes: [
       { kind: 'disc', c: L.MV_CENTER, n: MV_N, r: 16, off: -1 },
       ...Object.values(PV_DEFS).map((d) => ({ kind: 'tubeEnd', a: d.a, b: d.b, r: d.r + 3, t: 0.92 })),
@@ -348,8 +353,7 @@ function holeTest(h, p) {
 }
 
 // Builds a single chamber mesh. Returns positions, normals, triangle indices.
-function buildChamber(id, h) {
-  const def = CHAMBER_DEFS[id];
+function buildChamber(id, h, def = CHAMBER_DEFS[id]) {
   const sdf = makeChamberSDF(def);
   const [mn, mx] = boundsOf(def);
   const { verts, tris } = surfaceNets(sdf, mn, mx, h);
@@ -590,7 +594,7 @@ export function annulusPoint(center, normal, radius, hour) {
   const th = (hour % 12) * Math.PI / 6;
   return add(center, scl(add(scl(up, Math.cos(th)), scl(right, Math.sin(th))), radius));
 }
-export { TV_N, MV_N };
+export { TV_N, MV_N, LV_AXIS, LV_BASE, RV_SIDE };
 
 // ---------------------------------------------------------------- display mesh
 // A finer shell built from the same SDFs and orifices as the engine mesh, with
@@ -628,6 +632,8 @@ const CRISTA_LINE = [[-30, 21, 40], L.CRISTA_TOP, L.CRISTA_MID, L.CRISTA_BOTTOM,
 const RV_BASE = L.TV_CENTER, RV_AX = norm(sub(L.RV_APEX, L.TV_CENTER)), RV_AXL = len(sub(L.RV_APEX, L.TV_CENTER));
 const LV_AXL = len(sub(L.LV_APEX, LV_BASE));
 const LAA_C = [55, 10, 28];
+const perpLV = (v) => norm(sub(v, scl(LV_AXIS, dot(v, LV_AXIS))));
+const LV_PM_DIRS = [perpLV(norm([0.75, -0.65, 0.1])), perpLV(norm([0.2, 0.55, -0.8]))]; // anterolateral, posteromedial
 
 // coordinates in a frame whose first axis is `ax`, scaled so ridges elongate along ax
 const FRAMES = new Map();
@@ -646,7 +652,18 @@ function relief(id, p) {
     const q = stretched(p, ax, 0.09, 0.32);
     const tr = ridge(q[0], q[1], q[2]) * 0.75 + ridge(q[0] * 1.9 + 5, q[1] * 1.9, q[2] * 1.9) * 0.35;
     const amp = id === 'RV' ? 1.6 * (0.35 + 0.65 * apical) : 1.15 * apical;
-    return base + tr * amp;
+    let pm = 0;
+    if (id === 'LV') {
+      // anterolateral and posteromedial papillary muscles: columns rising from the
+      // mid/apical free wall toward the base (chordae not modelled)
+      const d = sub(p, LV_BASE), sAx = dot(d, LV_AXIS), r = sub(d, scl(LV_AXIS, sAx)), rl = len(r) || 1;
+      const win = sstep(28, 38, sAx) * sstep(70, 58, sAx) * (0.55 + 0.45 * sstep(62, 40, sAx));
+      for (const dir of LV_PM_DIRS) {
+        const arc = Math.acos(Math.max(-1, Math.min(1, dot(r, dir) / rl))) * rl; // mm along the wall
+        pm = Math.max(pm, 9.5 * Math.exp(-(arc * arc) / (2 * 4.2 * 4.2)) * win);
+      }
+    }
+    return base + tr * amp + pm;
   }
   if (id === 'RA') {
     const dc = distToPolyline(p, CRISTA_LINE);

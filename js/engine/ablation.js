@@ -46,6 +46,7 @@ export class Ablation {
     const abl = this.sim.catheters.ABL;
     if (this.sim.rfGate) { const r = this.sim.rfGate(); if (r) return r; }
     if (this.lockUntil && this.sim.t < this.lockUntil) return 'Acknowledge the safety alert first';
+    if (abl.isMapping?.()) return `${abl.info.name} is a mapping catheter: switch to the ablation catheter for RF`;
     if (abl.cf < 3) return `No contact (CF ${abl.cf.toFixed(0)} g)`;
     return '';
   }
