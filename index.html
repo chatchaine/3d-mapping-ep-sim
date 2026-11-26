@@ -130,15 +130,20 @@
           <button class="btn btn--icon" data-steer="adv+" aria-label="Advance (R)">⇡</button>
           <button class="btn btn--icon" data-steer="adv-" aria-label="Retract (F)">⇣</button>
         </div>
-        <div class="steer-pad__sub">Sheath</div>
-        <div class="steer-pad__grid">
-          <button class="btn btn--icon" data-steer="sb+" aria-label="Sheath bend more (I)" title="Sheath bend + (I)">⤴</button>
-          <button class="btn btn--icon" data-steer="sr-" aria-label="Sheath rotate counter-clockwise (J)" title="Sheath rotate CCW (J)">↺</button>
-          <button class="btn btn--icon" data-steer="sr+" aria-label="Sheath rotate clockwise (L)" title="Sheath rotate CW (L)">↻</button>
-          <button class="btn btn--icon" data-steer="sb-" aria-label="Sheath bend less (K)" title="Sheath bend − (K)">⤵</button>
+        <div class="steer-pad__sub" title="Tilts the whole catheter about the access point, up to 40°">Sheath tilt · max 40°</div>
+        <div class="steer-pad__grid steer-pad__grid--tilt">
+          <span></span>
+          <button class="btn btn--icon" data-steer="ty+" aria-label="Tilt sheath anterior (I)" title="Tilt anterior, Y+ (I)">↑</button>
+          <span></span>
+          <button class="btn btn--icon" data-steer="tx-" aria-label="Tilt sheath to the patient's right (J)" title="Tilt right, X− (J)">←</button>
+          <button class="btn btn--icon" data-steer="tilt0" aria-label="Centre the sheath" title="Centre the sheath">●</button>
+          <button class="btn btn--icon" data-steer="tx+" aria-label="Tilt sheath to the patient's left (L)" title="Tilt left, X+ (L)">→</button>
+          <span></span>
+          <button class="btn btn--icon" data-steer="ty-" aria-label="Tilt sheath posterior (K)" title="Tilt posterior, Y− (K)">↓</button>
+          <span></span>
         </div>
         <div class="steer-pad__read mono" id="steer-read">defl 0% · rot 0° · adv 0 mm</div>
-        <div class="steer-pad__read mono" id="steer-read2">sheath 0° @ 0°</div>
+        <div class="steer-pad__read mono" id="steer-read2">sheath X 0° · Y 0° · 0/40°</div>
         <label class="steer-pad__ch">Chamber <select id="abl-chamber" class="select"><option>RA</option><option>LA</option><option>RV</option><option>LV</option></select></label>
       </div>
     </main>

@@ -39,7 +39,7 @@
     - Scar VT: the window opens at the isthmus, which lies in the low-voltage border zone.
     - AVNRT: the slow-pathway region shows a low-voltage "bridge" between the CS os and the tricuspid annulus on the voltage map.
   - **Views:** AP/PA/LAO/RAO/LL/RL presets, orbit and zoom.
-  - **Ablation catheter:** bidirectional deflection, torque and advance, plus a steerable sheath (bend and rotation), so the tip can reach any wall of the chamber. Ctrl/Alt+drag moves the tip over the wall directly. The distal shaft flexes against the wall, and a contact-force arrow is shown.
+  - **Ablation catheter:** bidirectional deflection, torque and advance, plus a sheath that tilts the whole catheter about the access point in X (patient left/right) and Y (anterior/posterior), up to 40°, so the tip can reach any wall of the chamber. Ctrl/Alt+drag moves the tip over the wall directly. The distal shaft flexes against the wall, and a contact-force arrow is shown.
   - **Catheters:** the electrodes are placed along the curved shaft and bend with it (3.5 mm ablation tip, 2-5-2 mm ring spacing).
   - **Mapping catheters:** the steerable catheter can be swapped (ABL row, Catheters panel) for an HD Grid (16 electrodes on a flat 4 × 4 paddle, 3 mm spacing) or an Orion (64-pole mini-basket, 8 splines × 8 electrodes). The paddle lies flat on the wall and the basket splines conform to it. Each acquisition records every electrode in contact, giving tens of points per beat for high-density LAT and voltage maps. Four bipoles (Grid A–D 1-2, Orion A/C/E/G 1-2) are shown on the EGM panel. The mapping catheters have no RF and no contact-force sensor; the steer pad shows how many electrodes are in contact.
 - **Propagation engine.** An event-driven graph cellular automaton with restitution, decremental AV-nodal pathways (dual physiology, Wenckebach), accessory pathways and a His–Purkinje system. Mechanisms include:
@@ -48,7 +48,7 @@
   - AF drivers in the pulmonary veins
   - VF
 - **EGM panel.** A sweeping display of I, II, aVF, V1, V6, HRA, His d/p, CS 9-10…1-2, RVA and ABL d/p (or the mapping catheter's bipoles), plus a PV loop in AF,, synthesised from the live activation.
-  - **Surface ECG:** the heart vector includes the transmural (endocardium to epicardium) wavefront. Sinus rhythm gives a small P wave, septal q in I/V6, an rS complex in V1, a concordant asymmetric T wave, and mild baseline wander.
+  - **Surface ECG:** the heart vector includes the transmural (endocardium to epicardium) wavefront. Sinus rhythm gives a small P wave, septal q in I/V6, an rS complex in V1, a concordant asymmetric T wave, and mild baseline wander. Beats that start in the myocardium (ventricular pacing, PVCs, VT, the delta wave of pre-excitation) are wide and follow their site of origin, with discordant T waves: RV apex pacing captures with an LBBB-like, superior-axis QRS, and pre-excited beats fuse with the His-Purkinje wave. Cases can set the patient's heart orientation (e.g. a more horizontal heart in the scar VT case).
   - **Intracardiac EGMs:** band-pass filtered like a recording system (bipolar 30 Hz high-pass), so near-field signals are sharp and far-field signals are small.
   - **Controls:** sweep speed, gain, freeze and calipers. **Snap** (or N) saves a 10 s strip of every channel at that moment and opens it with calipers. Saved snaps stay available from the snap list after the live buffer has moved on. The last 20 s can be scrolled left and right with the mouse wheel, by dragging the strip, with the scroll bar, with ◀ ▶ or with ←/→. **Live** (or End) returns to the live sweep.
 - **Stimulator.** S1, S1S2(S3), burst and decremental pacing, with entrainment analysis (PPI, PPI−TCL, VAV/VAAV, SA). Also offers a His-refractory PVC, para-Hisian pacing, isoproterenol, adenosine and storm drugs.
@@ -101,7 +101,7 @@ With a local server on port 8765 and a headless Chromium:
 
 ## Known limitations
 - The anatomy is procedural, made of smooth ellipsoid/capsule unions and not patient-derived. The wall is modelled as a single surface layer with a nominal thickness.
-- EGMs and the surface ECG are synthesised kernels, not biophysical. The 12-lead is shown as a text and schematic description, and only I, II, V1 and aVF are computed.
+- EGMs and the surface ECG are synthesised kernels, not biophysical. The live surface ECG computes I, II, aVF, V1 and V6; the briefing shows a separately generated reference 12-lead for each case.
 - Pace mapping is a distance-based score. There is no fluoroscopy view, so the time domain uses simulated procedure time as a proxy.
 - Some mechanism onsets are rule-based: reentry is seeded when the stimulation criteria are met, not purely emergent.
 

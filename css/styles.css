@@ -174,6 +174,7 @@ input[type="range"] { accent-color: var(--c-accent); }
 .steer-pad__led { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-faint); }
 .steer-pad__led[data-contact="light"] { background: var(--c-warn); } .steer-pad__led[data-contact="good"] { background: var(--c-ok); } .steer-pad__led[data-contact="excess"] { background: var(--c-danger); }
 .steer-pad__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.steer-pad__grid--tilt .btn[data-steer="tilt0"] { font-size: 10px; opacity: .8; }
 .steer-pad__read { margin: 2px 0; color: var(--c-text-muted); }
 .steer-pad__sub { margin: 4px 0 2px; color: var(--c-text-faint); font-size: var(--fs-xs); letter-spacing: .04em; text-transform: uppercase; }
 .steer-pad__ch { display: flex; gap: 6px; align-items: center; color: var(--c-text-muted); }

@@ -192,8 +192,10 @@ export function nodePos(heart, n) { return [heart.pos[3 * n], heart.pos[3 * n + 
 //   deflect     -1..1   bidirectional tip curve (±180° over the 28 mm distal segment)
 //   rotate      deg     torque: turns the plane of the curve around the shaft
 //   advance     mm      catheter length out of the sheath
-//   sheathBend  0..120° steerable-sheath curve: tilts the exit direction off the access axis
-//   sheathRot   deg     sheath rotation: which way that tilt points
+//   sheathX     deg     sheath tilt toward the patient's left (+) / right (-)
+//   sheathY     deg     sheath tilt anterior (+) / posterior (-)
+//                       The sheath pivots at the access point and tilts the whole catheter;
+//                       the combined tilt is limited to SHEATH_MAX (40°).
 // Shaft mechanics: the free path is computed first; then the shaft is kept inside the
 // chamber (it rests on the wall where it touches) and wall penetration of the tip is
 // removed by flexing the distal shaft (correction weighted toward the tip), so the
@@ -201,6 +203,22 @@ export function nodePos(heart, n) { return [heart.pos[3 * n], heart.pos[3 * n + 
 // length along the final, flexed path so they follow the curve.
 const ARC_L = 28; // deflectable segment length (mm)
 const POLE_S = [0, 6, 12, 15]; // 3.5 mm tip + 1 mm rings, 2-5-2 mm spacing (centres, mm back from the tip along the shaft)
+
+export const SHEATH_MAX = 40;
+// clamp a sheath tilt (x, y in degrees) to the 40° cone
+export function clampTilt(x, y) {
+  const m = Math.hypot(x, y);
+  return m > SHEATH_MAX ? [(x * SHEATH_MAX) / m, (y * SHEATH_MAX) / m] : [x, y];
+}
+// Sheath tilt axes for an access direction: X = patient's left, Y = anterior (both ⟂ access)
+function tiltAxes(d) {
+  let ex = sub([1, 0, 0], scl(d, d[0]));
+  if (len(ex) < 0.3) ex = cross([0, 0, 1], d);
+  ex = norm(ex);
+  let ey = norm(cross(d, ex));
+  if (ey[1] > 0) ey = scl(ey, -1); // anterior is -y
+  return [ex, ey];
+}
 
 function perpBasis(d) {
   const e1 = norm(cross(d, Math.abs(d[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0]));
@@ -228,7 +246,7 @@ export class AblationCatheter {
     this.array = null; // multipolar electrode array: {pos[], contact[], splines, perSpline}
     this.chamber = sim.cfg.ablChamber || 'RA';
     this.deflect = 0.35; this.rotate = 0; this.advance = 30; // -1..1, deg, mm
-    this.sheathBend = 0; this.sheathRot = 0; // deg
+    this.sheathX = 0; this.sheathY = 0; // deg
     this.placed = true; this.visible = true;
     this.cf = 0; this.contact = false; this.tip = [0, 0, 0]; this.tipDir = [0, 0, 1]; this.wallNormal = [0, 0, 1];
     this.surfaceNode = -1; this.poles = []; this.path = [];
@@ -240,7 +258,7 @@ export class AblationCatheter {
   setChamber(ch) {
     if (ch === this.chamber) return;
     this.chamber = ch; this.override = null; this.deflect = 0.3; this.rotate = 0; this.advance = 28;
-    this.sheathBend = 0; this.sheathRot = 0;
+    this.sheathX = 0; this.sheathY = 0;
     this.sim.logEvent('abl_chamber', { chamber: ch });
     this.update(this.sim.t);
   }
@@ -251,25 +269,26 @@ export class AblationCatheter {
     this.update(this.sim.t);
   }
   isMapping() { return this.type !== 'ABL'; }
-  // exit direction of the steerable sheath
-  sheathDir(bend = this.sheathBend, srot = this.sheathRot) {
+  // exit direction of the sheath: the access axis tilted by (sx, sy) degrees
+  sheathDir(sx = this.sheathX, sy = this.sheathY) {
     const d = ACCESS[this.chamber].dir;
-    if (!bend) return d;
-    const [e1, e2] = perpBasis(d);
-    const b = (bend * Math.PI) / 180, r = (srot * Math.PI) / 180;
-    return norm(add(scl(d, Math.cos(b)), scl(add(scl(e1, Math.cos(r)), scl(e2, Math.sin(r))), Math.sin(b))));
+    if (!sx && !sy) return d;
+    const [ex, ey] = tiltAxes(d);
+    const m = Math.hypot(sx, sy), a = (Math.min(m, SHEATH_MAX) * Math.PI) / 180;
+    const u = norm(add(scl(ex, sx / m), scl(ey, sy / m)));
+    return norm(add(scl(d, Math.cos(a)), scl(u, Math.sin(a))));
   }
   // Free (unconstrained) catheter path. iCath = index of the sheath tip in pts.
-  kinematics(defl, rot, adv, bend = this.sheathBend, srot = this.sheathRot) {
+  kinematics(defl, rot, adv, sx = this.sheathX, sy = this.sheathY) {
     const acc = ACCESS[this.chamber];
-    const d0 = this.sheathDir(bend, srot);
+    const d0 = this.sheathDir(sx, sy);
     const [ref, r2] = perpBasis(d0);
     const th = (rot * Math.PI) / 180;
     const sgn = defl < 0 ? -1 : 1;
     const bendV = scl(add(scl(ref, Math.cos(th)), scl(r2, Math.sin(th))), sgn);
     const pts = [sub(acc.entry, scl(acc.dir, 40)), sub(acc.entry, scl(acc.dir, 14))];
-    // sheath curve: blend from the access axis to the exit direction over the last 12 mm
-    if (bend > 1) pts.push(sub(acc.entry, scl(norm(add(acc.dir, d0)), 6)));
+    // the sheath pivots at the access point: blend from the access route into the tilted axis
+    if (Math.hypot(sx, sy) > 1) pts.push(sub(acc.entry, scl(norm(add(acc.dir, d0)), 6)));
     const iCath = pts.length;
     pts.push(acc.entry.slice());
     const nSh = Math.max(1, Math.ceil(adv / 5));
@@ -291,9 +310,9 @@ export class AblationCatheter {
     return { pts, tip: pts[pts.length - 1], tipDir, iCath };
   }
   // tip only (fast path for the inverse-kinematics search)
-  tipOf(defl, rot, adv, bend, srot) {
+  tipOf(defl, rot, adv, sx, sy) {
     const acc = ACCESS[this.chamber];
-    const d0 = this.sheathDir(bend, srot);
+    const d0 = this.sheathDir(sx, sy);
     const [ref, r2] = perpBasis(d0);
     const th = (rot * Math.PI) / 180, sgn = defl < 0 ? -1 : 1;
     const kappa = (Math.abs(defl) * Math.PI) / ARC_L;
@@ -304,27 +323,28 @@ export class AblationCatheter {
     return add(base, add(scl(d0, Math.sin(a) / kappa), scl(bendV, (1 - Math.cos(a)) / kappa)));
   }
   // Inverse kinematics by grid search (used for shift-click / drag "move catheter here").
-  // The current sheath setting is tried first; if the target is out of reach the sheath
-  // curve is searched too, so any wall of the chamber can be reached.
+  // The current sheath tilt is tried first; if the target is out of reach the tilt is
+  // searched too (within the 40° cone).
   solveTo(target) {
-    const evalAt = (df, rot, adv, sb, sr) => len(sub(this.tipOf(df, rot, adv, sb, sr), target));
+    const evalAt = (df, rot, adv, sx, sy) => len(sub(this.tipOf(df, rot, adv, sx, sy), target));
     let best = null;
-    const consider = (df, rot, adv, sb, sr) => { const d = evalAt(df, rot, adv, sb, sr); if (!best || d < best.d) best = { d, rot, df, adv, sb, sr }; };
-    for (let rot = -180; rot < 180; rot += 15) for (let df = 0; df <= 1.001; df += 0.1) for (let adv = 0; adv <= 80; adv += 5) consider(df, rot, adv, this.sheathBend, this.sheathRot);
+    const consider = (df, rot, adv, sx, sy) => { [sx, sy] = clampTilt(sx, sy); const d = evalAt(df, rot, adv, sx, sy); if (!best || d < best.d) best = { d, rot, df, adv, sx, sy }; };
+    for (let rot = -180; rot < 180; rot += 15) for (let df = 0; df <= 1.001; df += 0.1) for (let adv = 0; adv <= 80; adv += 5) consider(df, rot, adv, this.sheathX, this.sheathY);
     if (best.d > 3) {
-      for (let sb = 0; sb <= 90; sb += 30) for (let sr = -180; sr < 180; sr += sb ? 45 : 360)
-        for (let rot = -180; rot < 180; rot += 30) for (let df = 0; df <= 1.001; df += 0.2) for (let adv = 0; adv <= 80; adv += 10) consider(df, rot, adv, sb, sr);
+      for (let sx = -40; sx <= 40; sx += 20) for (let sy = -40; sy <= 40; sy += 20) {
+        if (Math.hypot(sx, sy) > SHEATH_MAX + 1e-6) continue;
+        for (let rot = -180; rot < 180; rot += 30) for (let df = 0; df <= 1.001; df += 0.2) for (let adv = 0; adv <= 80; adv += 10) consider(df, rot, adv, sx, sy);
+      }
     }
     // local refinement
     for (let it = 0; it < 4; it++) {
-      const st = [[8, 0.05, 3, 8, 12], [4, 0.02, 1.5, 4, 6], [2, 0.01, 0.75, 2, 3], [1, 0.005, 0.4, 1, 1.5]][it];
+      const st = [[8, 0.05, 3, 8], [4, 0.02, 1.5, 4], [2, 0.01, 0.75, 2], [1, 0.005, 0.4, 1]][it];
       for (let pass = 0; pass < 2; pass++) {
         const b0 = { ...best };
         for (const dr of [-1, 0, 1]) for (const dd of [-1, 0, 1]) for (const da of [-1, 0, 1]) for (const ds of [-1, 0, 1]) {
           const df = Math.max(0, Math.min(1, b0.df + dd * st[1])), adv = Math.max(0, Math.min(90, b0.adv + da * st[2]));
-          const sb = Math.max(0, Math.min(120, b0.sb + ds * st[3]));
-          consider(df, b0.rot + dr * st[0], adv, sb, b0.sr);
-          if (sb > 0) consider(df, b0.rot + dr * st[0], adv, sb, b0.sr + ds * st[4]);
+          consider(df, b0.rot + dr * st[0], adv, b0.sx + ds * st[3], b0.sy);
+          if (ds) consider(df, b0.rot + dr * st[0], adv, b0.sx, b0.sy + ds * st[3]);
         }
       }
     }
@@ -337,21 +357,20 @@ export class AblationCatheter {
     for (let it = 0; it < 3; it++) { const d = f0(target[0], target[1], target[2]); if (Math.abs(d) < 0.05) break; target = sub(target, scl(sdfGrad(f0, target), d)); }
     const b = this.solveTo(target);
     this.rotate = ((b.rot + 540) % 360) - 180; this.deflect = b.df; this.advance = b.adv;
-    this.sheathBend = b.sb; this.sheathRot = ((b.sr + 540) % 360) - 180;
+    this.sheathX = b.sx; this.sheathY = b.sy;
     // residual correction keeps the tip exactly on the clicked point; it decays when the user steers
-    const tip = this.tipOf(this.deflect, this.rotate, this.advance, this.sheathBend, this.sheathRot);
+    const tip = this.tipOf(this.deflect, this.rotate, this.advance, this.sheathX, this.sheathY);
     const f = chamberSDF(this.chamber);
     const g = sdfGrad(f, target);
     const pushed = add(target, scl(g, cfTarget / 3.2 + 0.3)); // push beyond wall to create contact
     this.override = { offset: sub(pushed, tip) };
     this.update(this.sim.t);
   }
-  steer(dDefl, dRot, dAdv, dBend = 0, dSRot = 0) {
+  steer(dDefl, dRot, dAdv, dX = 0, dY = 0) {
     this.deflect = Math.max(-1, Math.min(1, this.deflect + dDefl));
     this.rotate = ((this.rotate + dRot + 540) % 360) - 180;
     this.advance = Math.max(0, Math.min(90, this.advance + dAdv));
-    this.sheathBend = Math.max(0, Math.min(120, this.sheathBend + dBend));
-    this.sheathRot = ((this.sheathRot + dSRot + 540) % 360) - 180;
+    [this.sheathX, this.sheathY] = clampTilt(this.sheathX + dX, this.sheathY + dY);
     if (this.override) {
       // steering consumes the snap offset gradually so control feels continuous
       this.override.offset = scl(this.override.offset, 0.85);

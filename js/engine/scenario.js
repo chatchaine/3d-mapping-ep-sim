@@ -199,10 +199,14 @@ export function buildScenario(heart, cfgIn) {
   // ---- accessory pathway
   if (cfg.ap) {
     const ap = cfg.ap;
-    let aNode, vNode;
+    let aNode, vNode, vAnte = -1;
     if (ap.landmark) {
       aNode = pick(LR[ap.landmark] || ap.landmark, ap.atrialChamber || 'RA');
       vNode = heart.grid.nearest(P(eng, aNode), 60, (i) => (eng.chamber[i] === RV || eng.chamber[i] === LV));
+      // optional antegrade ventricular insertion: a posteroseptal AP pre-excites the inferior
+      // (diaphragmatic) septum near the crux, which gives the negative inferior delta wave.
+      // Retrograde conduction (ORT) and the pathway position (ablation target) stay at the annulus.
+      if (ap.vLandmark) { const n2 = heart.grid.nearest(ap.vLandmark, 30, (i) => (eng.chamber[i] === RV || eng.chamber[i] === LV)); if (n2 >= 0) vAnte = n2; }
     } else {
       const ring = ap.ring === 'TA' ? { c: LR.TV_CENTER, n: TV_N, ch: 'RA', vch: 'RV' } : { c: LR.MV_CENTER, n: MV_N, ch: 'LA', vch: 'LV' };
       const pt = annulusPoint(ring.c, ring.n, 17, ap.hour);
@@ -214,7 +218,7 @@ export function buildScenario(heart, cfgIn) {
     const apA = eng.addVirtual('AP_A', mid, { erp: 10, spike: { amp: 0.25, w: 1.2, r: 6 } });
     const apR = eng.addVirtual('AP_R', mid, { erp: 10, spike: { amp: 0.25, w: 1.2, r: 6 } });
     eng.addLink(aNode, apA, { pw: sys.pw.AP, dir: 'antero', kind: 'ap' });
-    eng.addLink(apA, vNode, { delay: 2, kind: 'ap' });
+    eng.addLink(apA, vAnte >= 0 ? vAnte : vNode, { delay: 2, kind: 'ap' });
     eng.addLink(vNode, apR, { pw: sys.pw.AP, dir: 'retro', kind: 'ap' });
     eng.addLink(apR, aNode, { delay: 2, kind: 'ap' });
     sys.ap = { aNode, vNode, pos: mid, depth: ap.depth || 3 };

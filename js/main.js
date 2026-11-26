@@ -511,8 +511,9 @@ class App {
         if (k === 'defl+') abl.steer(r, 0, 0); else if (k === 'defl-') abl.steer(-r, 0, 0);
         else if (k === 'rot+') abl.steer(0, 2.5, 0); else if (k === 'rot-') abl.steer(0, -2.5, 0);
         else if (k === 'adv+') abl.steer(0, 0, 0.6); else if (k === 'adv-') abl.steer(0, 0, -0.6);
-        else if (k === 'sb+') abl.steer(0, 0, 0, 1.2); else if (k === 'sb-') abl.steer(0, 0, 0, -1.2);
-        else if (k === 'sr+') abl.steer(0, 0, 0, 0, 2.5); else if (k === 'sr-') abl.steer(0, 0, 0, 0, -2.5);
+        else if (k === 'tx+') abl.steer(0, 0, 0, 1); else if (k === 'tx-') abl.steer(0, 0, 0, -1);
+        else if (k === 'ty+') abl.steer(0, 0, 0, 0, 1); else if (k === 'ty-') abl.steer(0, 0, 0, 0, -1);
+        else if (k === 'tilt0') abl.steer(0, 0, 0, -abl.sheathX, -abl.sheathY);
       }
     }
     if (!this.paused && !isModalOpen()) sim.advance(dt * this.speed);
@@ -534,7 +535,8 @@ class App {
         $('steer-cf').textContent = `${abl.cf.toFixed(0)} g`;
       }
       $('steer-read').textContent = `defl ${abl.deflect > 0 ? '+' : ''}${Math.round(abl.deflect * 100)}% · rot ${Math.round(abl.rotate)}° · adv ${Math.round(abl.advance)} mm`;
-      $('steer-read2').textContent = `sheath ${Math.round(abl.sheathBend)}° @ ${Math.round(abl.sheathRot)}°`;
+      const fx = Math.round(abl.sheathX), fy = Math.round(abl.sheathY);
+      $('steer-read2').textContent = `sheath X ${fx > 0 ? 'L ' + fx : fx < 0 ? 'R ' + -fx : 0}° · Y ${fy > 0 ? 'ant ' + fy : fy < 0 ? 'post ' + -fy : 0}° · ${Math.round(Math.hypot(abl.sheathX, abl.sheathY))}/40°`;
       const s = sim.mapping.settings;
       $('vp-status').textContent = `${sim.mapping.points.length} pts · ${this.vp.mode.toUpperCase()} · ref ${s.ref} · WOI ${s.woi[0]}…${s.woi[1]} ms · fill ${s.fill} mm · ABL ${abl.chamber}`;
       if (now - (this._desc || 0) > 5000) {
@@ -545,7 +547,7 @@ class App {
   }
 }
 
-const STEER_KEYS = { w: 'defl+', s: 'defl-', q: 'rot-', e: 'rot+', r: 'adv+', f: 'adv-', i: 'sb+', k: 'sb-', j: 'sr-', l: 'sr+' };
+const STEER_KEYS = { w: 'defl+', s: 'defl-', q: 'rot-', e: 'rot+', r: 'adv+', f: 'adv-', i: 'ty+', k: 'ty-', j: 'tx-', l: 'tx+' };
 
 function formatMeasure(d) {
   if (d.text) return d.text;

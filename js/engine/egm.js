@@ -42,7 +42,29 @@ const KERNEL_QRS = makeKernel(4);
 const KERNEL_P = makeKernel(10);
 const KERNEL_T = makeKernel(40, 24); // rise 40 ms, fall 24 ms
 const P_SCALE = 0.3; // P wave ~10-20% of the QRS amplitude, as on a clinical ECG
-const TANGENTIAL = 0.4; // weight of along-the-wall spread in the ventricular heart vector
+// Weight of along-the-wall spread in the ventricular heart vector. In a beat conducted over
+// the His-Purkinje system the endocardium activates almost at once, so the wavefront is mostly
+// transmural and along-the-wall components largely cancel (small weight). In a beat that starts
+// in the myocardium (pacing, PVC, VT, pre-excitation) a single slow wavefront crosses the
+// ventricles: its direction dominates and gives the wide, bizarre QRS.
+const TANG_HPS = 0.4, TANG_MYO = 2;
+// ...and its transmural (endo -> epi) component is much less coherent than in a Purkinje-driven beat
+const TM_MYO = 0.2;
+// Repolarisation follows the activation sequence in myocardial beats, so the tangential part of
+// the T wave is discordant (secondary ST-T change); the transmural part stays concordant.
+const T_DISC = 0.75;
+
+// Rodrigues rotation taking unit vector a onto unit vector b (3x3, row-major)
+function rotBetween(a, b) {
+  const v = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const c = a[0] * b[0] + a[1] * b[1] + a[2] * b[2], k = 1 / (1 + c);
+  return [
+    v[0] * v[0] * k + c, v[0] * v[1] * k - v[2], v[0] * v[2] * k + v[1],
+    v[1] * v[0] * k + v[2], v[1] * v[1] * k + c, v[1] * v[2] * k - v[0],
+    v[2] * v[0] * k - v[1], v[2] * v[1] * k + v[0], v[2] * v[2] * k + c,
+  ];
+}
+const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
 const TRANSMURAL = [0, 0, 0.35, 2.6]; // by chamber index (RA, LA, RV, LV): wall-thickness weight
 const SEPTAL_DAMP = 0.7;
 const T_GAIN = 0.2; // T-wave impulse weight relative to depolarisation (T ≈ 25-35% of R)
@@ -72,6 +94,7 @@ export class EGMSystem {
     this.stimMark = new Float32Array(RING);
     this.cal = 2.2; // global amplitude calibration
     this.noise = 0.012;
+    this.vLast = -1e9; this.vHps = true; this.vStart = -1e9; this.hisAnte = -1e9; // current ventricular beat: conducted over the HPS?
     // surface leads
     for (const [id, v] of Object.entries(LEADS)) {
       const ch = this._mk(id, id, 'surface');
@@ -91,6 +114,12 @@ export class EGMSystem {
       const septal = Math.max(0, Math.min(1, (16 - dOther) / 8)); // 1 within ~8 mm of the other cavity
       this.tmW[n] = TRANSMURAL[c] * (1 - SEPTAL_DAMP * septal);
     }
+    // Optional per-patient heart orientation (case cfg.ecgAxis): the model's LV long axis
+    // (base -> apex) is rotated onto that anatomical axis in the torso before projection on the
+    // leads, e.g. a more horizontal heart, whose inferior (diaphragmatic) wall faces the
+    // inferior leads.
+    const ax = sim.cfg?.ecgAxis;
+    this.vRot = ax ? rotBetween(nrm([5, -57, -70]), nrm(ax)) : null;
     sim.subscribers.push((n, t, src, erp) => this.onAct(n, t, src, erp));
   }
 
@@ -156,23 +185,44 @@ export class EGMSystem {
       const l = Math.hypot(dx, dy, dz) || 1; dx /= l; dy /= l; dz /= l;
     }
     const tt = TISSUE_TABLE[tissue];
+    // classify the ventricular beat by how its first myocardial activation arrived
+    // (fusion: in a pre-excited beat the part activated after an antegrade His-Purkinje wave
+    // arrives is weighted like a conducted beat; retrograde His capture during pacing is not)
+    const nm = this.sim.sys.names;
+    if (n === nm.HIS) this.hisAnte = !(src === nm.LBB || src === nm.RBB || (src >= 0 && src < eng.nMesh)) ? t : this.hisAnte;
+    // (only working myocardium times the beat: a slow channel inside scar is active all the time)
+    if (isMesh && eng.chamber[n] >= 2 && tissue === TISSUE.VENTRICLE) {
+      const viaHps = src === nm.LBB || src === nm.RBB || src === nm.HIS;
+      if (t - this.vLast > 180) { this.vHps = viaHps; this.vStart = t; }
+      else if (!this.vHps && viaHps && this.hisAnte > this.vStart - 200) this.vHps = true;
+      this.vLast = t;
+    }
     // ---- ECG
     if (isMesh && tt.mass > 0 && (dx || dy || dz)) {
       const vent = eng.chamber[n] >= 2;
       const m = tt.mass * (vent ? 1 : 1.6);
+      const TANG = this.vHps ? TANG_HPS : TANG_MYO;
       const ti = idx % RING, tT = (idx + Math.round(erp + 25)) % RING;
       // ventricles: add the transmural (endocardium -> epicardium) wavefront, which
       // dominates the clinical QRS; it scales with wall thickness (LV >> RV)
-      let tx = 0, ty = 0, tz = 0;
+      let tx = 0, ty = 0, tz = 0, gx = dx, gy = dy, gz = dz;
       if (vent) {
         const N = this.sim.heart.normal, w = this.tmW[n] * m;
         tx = N[3 * n] * w; ty = N[3 * n + 1] * w; tz = N[3 * n + 2] * w;
+        const R = this.vRot;
+        if (R) {
+          [tx, ty, tz] = [R[0] * tx + R[1] * ty + R[2] * tz, R[3] * tx + R[4] * ty + R[5] * tz, R[6] * tx + R[7] * ty + R[8] * tz];
+          [gx, gy, gz] = [R[0] * dx + R[1] * dy + R[2] * dz, R[3] * dx + R[4] * dy + R[5] * dz, R[6] * dx + R[7] * dy + R[8] * dz];
+        }
       }
       for (const id in LEADS) {
         const ch = this.byId[id];
-        const pr = (dx * ch.lead[0] + dy * ch.lead[1] + dz * ch.lead[2]) * m * (vent ? TANGENTIAL : 1) + tx * ch.lead[0] + ty * ch.lead[1] + tz * ch.lead[2];
-        if (vent) { ch.imp[ti] += pr; ch.impT[tT] += pr * T_GAIN; }
-        else ch.impA[ti] += pr * P_SCALE;
+        const tg = (gx * ch.lead[0] + gy * ch.lead[1] + gz * ch.lead[2]) * m;
+        if (vent) {
+          const tm = tx * ch.lead[0] + ty * ch.lead[1] + tz * ch.lead[2];
+          ch.imp[ti] += tg * TANG + tm * (this.vHps ? 1 : TM_MYO);
+          ch.impT[tT] += (tm * (this.vHps ? 1 : TM_MYO) - (this.vHps ? 0 : T_DISC) * tg * TANG) * T_GAIN;
+        } else ch.impA[ti] += tg * P_SCALE;
       }
     }
     // ---- intracardiac channels
