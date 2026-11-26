@@ -267,18 +267,24 @@ export class EGMPanel {
       ctx.lineJoin = 'round';
       ctx.beginPath();
       let pen = false;
+      // Every pixel column owns a fixed time bin [c*mpp, (c+1)*mpp) on an absolute grid, so a
+      // column's content never changes once drawn (re-binning by the moving sweep time made
+      // the whole trace shimmer as the sweep advanced by fractions of a pixel).
+      const cEnd = Math.floor(tEnd / mpp);
       for (let px = 0; px < plotW; px++) {
-        let t;
-        if (this.frozen) t = tEnd - (plotW - 1 - px) * mpp;
+        let back;
+        if (this.frozen) back = plotW - 1 - px;
         else {
-          const back = ((colEnd - px) % plotW + plotW) % plotW;
+          back = ((colEnd - px) % plotW + plotW) % plotW;
           if (back > plotW - 8) { pen = false; continue; } // erase gap
-          t = tEnd - back * mpp;
         }
-        if (t < 0 || (this.viewSnap ? t < this.viewSnap.t0 || t >= this.viewSnap.t1 : fin - t > KEEP)) { pen = false; continue; }
+        const c = cEnd - back;
+        const sa = Math.ceil(c * mpp), sb = Math.min(Math.max(sa, Math.ceil((c + 1) * mpp) - 1), Math.floor(tEnd));
+        const t = sb;
+        if (sa < 0 || t < 0 || (this.viewSnap ? sa < this.viewSnap.t0 || t >= this.viewSnap.t1 : fin - sa > KEEP)) { pen = false; continue; }
         // min/max over the samples in this pixel for spikes
         let lo = Infinity, hi = -Infinity;
-        for (let k = 0; k < Math.max(1, mpp); k++) { const v = this._sample(id, t - k); if (v < lo) lo = v; if (v > hi) hi = v; }
+        for (let k = sa; k <= sb; k++) { const v = this._sample(id, k); if (v < lo) lo = v; if (v > hi) hi = v; }
         const yA = y0 - Math.max(-clip, Math.min(clip, hi)) * g, yB = y0 - Math.max(-clip, Math.min(clip, lo)) * g;
         const x = GUTTER + px + 0.5;
         if (!pen) { ctx.moveTo(x, yA); pen = true; } else ctx.lineTo(x, yA);
