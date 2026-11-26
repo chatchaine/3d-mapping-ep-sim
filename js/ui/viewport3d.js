@@ -61,7 +61,7 @@ export class Viewport3D {
     const rim = new THREE.DirectionalLight(0xffe2d0, 0.5); this.camera.add(rim); rim.position.set(0, 40, -80);
     this.scene.add(this.camera);
     this.root = new THREE.Group(); this.root.rotation.x = -Math.PI / 2; this.scene.add(this.root);
-    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: true };
+    this.mode = 'lat'; this.opacityMode = 0; this.show = { points: true, tags: true, cath: true, labels: true, others: false, context: false };
     this.ghost = null; this.labels = [];
     this.raycaster = new THREE.Raycaster();
     this.tween = null;

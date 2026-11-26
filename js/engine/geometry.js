@@ -33,7 +33,7 @@ export const LANDMARKS_RAW = {
   LIPV: [45, 56, 8],
   RSPV: [10, 52, 32],
   RIPV: [10, 56, 6],
-  LAA: [50, 18, 28],
+  LAA: [55, 10, 30],
   LA_ROOF: [28, 50, 38],
   LAT_MA: [42, 22, -8],
   CS_9_10: [-2, 22, -18],
@@ -125,11 +125,35 @@ const PV_DEFS = {
 };
 export { PV_DEFS };
 
+// LV: bullet shape, a broad basal body blended into a tapered apical cap
 function lvPrims() {
   return [
-    ellipsoid(LV_CENTER, [46, 25, 25], LV_AXIS),
+    ellipsoid(add(LV_BASE, scl(LV_AXIS, 36)), [40, 26.5, 26.5], LV_AXIS),
+    ellipsoid(add(LV_BASE, scl(LV_AXIS, 64)), [27, 15, 15], LV_AXIS),
     capsule([19, -2, -16], [9, 3, 4], 10), // LVOT toward the aortic valve
   ];
+}
+
+// RV free-wall crescent: wraps the septal (right-anterior) side of the LV. Its cavity
+// lies between the septum (LV + `inner`) and a free wall whose distance from the LV
+// is largest facing the RV and tapers to zero at the crescent edges and toward the apex.
+const RV_SIDE = norm([-0.8, -0.55, 0.12]);
+const RV_WRAP = { inner: 3.5, thick: 15, c0: 0.35, apexS: 76 };
+function rvCrescentSDF(e, x, y, z) {
+  const d = [x - LV_BASE[0], y - LV_BASE[1], z - LV_BASE[2]];
+  const sAx = dot(d, LV_AXIS);
+  const r = sub(d, scl(LV_AXIS, sAx));
+  const rl = len(r) || 1;
+  const cosT = dot(r, RV_SIDE) / rl;
+  const ang = Math.max(0, (cosT - RV_WRAP.c0) / (1 - RV_WRAP.c0));
+  const along = Math.max(0, Math.min(1, sAx / RV_WRAP.apexS));
+  // cavity depth: deepest facing the RV, still ~45% at the edges so the rim is rounded
+  const outer = RV_WRAP.inner + RV_WRAP.thick * (0.45 + 0.55 * Math.pow(ang, 0.8)) * (1 - 0.35 * along);
+  let c = smax(e - outer, -(e - RV_WRAP.inner), 3);
+  c = smax(c, (RV_WRAP.c0 - cosT) * rl, 7); // anterior/posterior edges of the crescent
+  c = smax(c, sAx - RV_WRAP.apexS, 10); // RV apex sits short of the LV apex
+  c = smax(c, 4 - sAx, 6); // no wrap above the LV base (around the outflow / aortic root)
+  return c;
 }
 
 export const CHAMBER_DEFS = {
@@ -140,7 +164,10 @@ export const CHAMBER_DEFS = {
       ellipsoid([-28, 15, 8], [24, 22, 27]),
       capsule([-26, 20, 26], [-25, 22, 62], 10), // SVC
       capsule([-24, 24, -18], [-22, 30, -68], 12), // IVC
-      ellipsoid([-30, -10, 22], [11, 10, 9]), // RAA
+      // RAA: broad-based triangular pouch on the anterolateral wall, apex hooking
+      // anteromedially toward the aortic root
+      ellipsoid([-33, -6, 21], [15, 8, 11], [0.25, -0.9, 0.2]),
+      ellipsoid([-25, -15, 25], [12, 6.5, 6], [0.75, -0.6, 0.25]),
       capsule([-26, 10, 0], [-18, -5, -12], 16), // TV vestibule
       ellipsoid([-12, 14, -12], [11, 10, 12]), // septal / Koch region
       capsule([-18, 2, -24], [-24, 24, -38], 9), // CTI floor
@@ -161,7 +188,13 @@ export const CHAMBER_DEFS = {
       capsule(PV_DEFS.LIPV.a, PV_DEFS.LIPV.b, PV_DEFS.LIPV.r),
       capsule(PV_DEFS.RSPV.a, PV_DEFS.RSPV.b, PV_DEFS.RSPV.r),
       capsule(PV_DEFS.RIPV.a, PV_DEFS.RIPV.b, PV_DEFS.RIPV.r),
-      capsule([44, 26, 24], [56, 12, 30], 7), // LAA
+      // LAA: narrow neck, tubular body curving anterolaterally, hooked tip with a
+      // small secondary lobe (chicken-wing-like morphology)
+      capsule([43, 25, 22], [50, 16, 27], 5.5),
+      capsule([50, 16, 27], [57, 8, 31], 7),
+      capsule([57, 8, 31], [60, 2, 25], 5.5),
+      capsule([60, 2, 25], [57, 0, 18], 4),
+      capsule([55, 11, 32], [55, 9, 39], 3.5),
       capsule([27, 32, 0], [25, 15, -10], 15), // mitral vestibule
     ],
     holes: [
@@ -171,12 +204,13 @@ export const CHAMBER_DEFS = {
   },
   RV: {
     wall: 4,
-    k: 6,
+    k: 7,
     prims: [
-      ellipsoid([-6, -28, -36], [38, 22, 20], TV_N),
-      capsule([-6, -32, -18], [6, -28, 18], 12), // RVOT
+      capsule([-4, -32, -14], [6, -28, 18], 11), // RVOT (infundibulum)
       capsule([-12, -16, -22], [-18, -5, -12], 15), // inflow
     ],
+    wrap: true, // + crescent around the LV (rvCrescentSDF)
+    boundsExtra: [[-40, -70, -95], [40, 40, 30]],
     subtract: { prims: lvPrims(), inflate: 3.5, k: 4 },
     holes: [
       { kind: 'disc', c: L.TV_CENTER, n: scl(TV_N, -1), r: 17, off: -1 },
@@ -205,6 +239,7 @@ export function makeChamberSDF(def) {
     if (sp) {
       let e = primSDF(sp[0], x, y, z);
       for (let i = 1; i < sp.length; i++) e = smin(e, primSDF(sp[i], x, y, z), 6);
+      if (def.wrap) d = smin(d, rvCrescentSDF(e, x, y, z), k);
       d = smax(d, -(e - inflate), ks);
     }
     return d;
@@ -225,6 +260,7 @@ function boundsOf(def) {
       }
     }
   }
+  if (def.boundsExtra) for (let i = 0; i < 3; i++) { mn[i] = Math.min(mn[i], def.boundsExtra[0][i]); mx[i] = Math.max(mx[i], def.boundsExtra[1][i]); }
   for (let i = 0; i < 3; i++) { mn[i] -= 6; mx[i] += 6; }
   return [mn, mx];
 }
@@ -591,7 +627,7 @@ function distToPolyline(p, line) {
 const CRISTA_LINE = [[-30, 21, 40], L.CRISTA_TOP, L.CRISTA_MID, L.CRISTA_BOTTOM, [-28, 27, -40]];
 const RV_BASE = L.TV_CENTER, RV_AX = norm(sub(L.RV_APEX, L.TV_CENTER)), RV_AXL = len(sub(L.RV_APEX, L.TV_CENTER));
 const LV_AXL = len(sub(L.LV_APEX, LV_BASE));
-const LAA_C = [52, 16, 29];
+const LAA_C = [55, 10, 28];
 
 // coordinates in a frame whose first axis is `ax`, scaled so ridges elongate along ax
 const FRAMES = new Map();
@@ -622,7 +658,7 @@ function relief(id, p) {
   }
   // LA: smooth body, pectinate ridges in the appendage only
   const dA = len(sub(p, LAA_C));
-  const laa = sstep(14, 6, dA);
+  const laa = sstep(15, 7, dA);
   return base * 0.6 + laa * ridge(p[0] * 0.35, p[1] * 0.35, p[2] * 0.35) * 0.9;
 }
 

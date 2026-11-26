@@ -278,7 +278,7 @@ export const CASES = [
     patient: { age: 68, sex: 'M', summary: 'Inferior MI 10 years ago, LVEF 30%, ICD with 3 appropriate shocks in a month for monomorphic VT despite amiodarone.', history: 'No new ischaemia on angiography.', meds: 'Amiodarone, beta-blocker', labs: 'K 4.3, Mg 2.0, creatinine normal' },
     ecg: { baseline: ['Sinus 70 bpm, PR 190 ms', 'Inferior Q waves; QRS 120 ms (IVCD)'], tachy: ['Monomorphic VT 145 bpm (CL 415)', 'RBBB-like V1, superior axis (negative II, III, aVF)', 'Dominant R in V2–V4 (no precordial QS): basal inferior LV / inferoseptal exit'] },
     objectives: ['Substrate map: dense scar < 0.5 mV, border zone 0.5–1.5 mV', 'Entrainment classification of isthmus sites', 'Non-inducibility with full PES'],
-    engine: { sinusCL: 850, ah: 110, hv: 60, mechanism: 'scarVT', hpsRetro: false, scarVT: { channelCV: 0.1 }, reentry: { tcl: 415 }, hemoBudget: 180, ablChamber: 'LV', tachyLabel: 'Monomorphic VT' },
+    engine: { sinusCL: 850, ah: 110, hv: 60, mechanism: 'scarVT', hpsRetro: false, scarVT: { channelCV: 0.11 }, reentry: { tcl: 415 }, hemoBudget: 180, ablChamber: 'LV', tachyLabel: 'Monomorphic VT' },
     induction: { group: 'V', text: 'RVA drive 600, S2 280, S3 240 (down to ERP / 200 ms).', iso: false },
     maneuvers: ['entrain_isthmus', 'pace_map'],
     diagnosis: { options: ['Scar-related reentrant VT, inferior LV isthmus', 'Bundle branch reentry', 'Focal Purkinje VT', 'Epicardial VT'], correct: 0, explain: 'Monomorphic RBBB/superior-axis VT in a post-MI scar with mid-diastolic potentials and concealed entrainment with PPI–TCL ≤ 30 ms.' },

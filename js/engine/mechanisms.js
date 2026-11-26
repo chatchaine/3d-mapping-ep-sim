@@ -133,7 +133,24 @@ class ScarVTMech extends BaseMech {
     const crit = (n >= 2 && c <= 260 && c >= 200) || (n >= 3 && c >= 200) || (n === 1 && c <= 250 && c >= 230 && this.sim.drugs.iso > 0);
     if (!crit || this.clinicalActive()) return;
     if (info.captureFail) return;
-    this.sim.engine.addTimer(this.sim.engine.t + 480, () => this.seed());
+    // Seed once the tissue the seeded wave must enter (border zone and myocardium around
+    // the isthmus exit) has recovered from the extrastimulus, so the circuit can form.
+    // Waiting for recovery rather than a fixed delay keeps induction robust to geometry.
+    const eng = this.sim.engine, t0 = eng.t, sys = this.sim.sys;
+    if (!this._exitZone) {
+      const ex = sys.targets.isthmusExit, p = [eng.pos[3 * ex], eng.pos[3 * ex + 1], eng.pos[3 * ex + 2]];
+      const z = new Set(sys.regions.bz);
+      this.sim.heart.grid.query(p, 18, (n) => { if (eng.chamber[n] === CHAMBER_INDEX.LV && eng.cv[n] > 0 && !sys.channelAngle.has(n)) z.add(n); });
+      this._exitZone = [...z];
+    }
+    const zone = this._exitZone;
+    const attempt = () => {
+      let ready = true;
+      for (const n of zone) if (eng.refrEnd[n] > eng.t + 15) { ready = false; break; }
+      if (ready || eng.t - t0 >= 900) this.seed();
+      else eng.addTimer(eng.t + 10, attempt);
+    };
+    eng.addTimer(t0 + (this.cfg.reentry?.seedDelay || 380), attempt);
   }
   tick(t) {
     super.tick(t);

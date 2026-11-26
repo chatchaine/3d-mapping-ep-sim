@@ -24,7 +24,10 @@
   10. RVOT PVC/VT
   11. VF / electrical storm
 - **Enforced workflow.** The steps are briefing (vignette, schematic 12-lead ECG, quiz), catheter placement, baseline intervals with calipers, induction, diagnostic maneuvers and diagnosis commit, mapping, ablation, endpoint tests, and debrief. RF is gated until a diagnosis is committed (except in the VF case).
-- **3D viewport.** Procedural RA/LA/RV/LV shells (about 14k engine nodes) with landmarks. They are displayed as finer shells with endocardial relief (ventricular trabeculations, RA pectinate muscles and crista terminalis, LAA pectinates). Translucent surrounding anatomy (aorta, pulmonary artery, caval and pulmonary veins, coronary sinus, valve annuli) can be toggled with **Anatomy**.
+- **3D viewport.** Procedural RA/LA/RV/LV shells (about 15k engine nodes) with landmarks.
+  - **Shapes:** the LV is bullet-shaped with a tapered apex, and the RV is a crescent wrapped around the septal side of the LV, with inflow and infundibulum. The RAA is a broad-based triangular pouch, and the LAA is narrow-necked, tubular and hooked.
+  - **Display:** finer shells with endocardial relief (ventricular trabeculations, RA pectinate muscles and crista terminalis, LAA pectinates).
+  - **Anatomy toggle:** optional translucent surrounding anatomy (great vessels, coronary sinus, valve annuli). It is off by default.
   - **Maps:** LAT and bipolar voltage maps built from acquired points, using the reference channel, window of interest (WOI), fill radius and colour bar. A live propagation view is also available.
   - **Point acquisition:** Space at the catheter tip, or Shift+click on the shell.
   - **Views:** AP/PA/LAO/RAO/LL/RL presets, orbit and zoom.
